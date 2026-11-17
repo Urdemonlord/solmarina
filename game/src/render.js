@@ -143,9 +143,11 @@ export function createRenderer(canvas) {
 
   function drawBuildings(G) {
     for (const b of G.city.buildings) {
-      // Soft shadow to the south-east, then wall, roof and windows.
+      // Soft shadow to the south-east, longer for taller buildings, then wall,
+      // roof and windows.
+      const shadow = 6 + (b.elevation || 14) * 0.4;
       context.fillStyle = SHADOW;
-      context.fillRect(b.x + 8, b.y + 10, b.width, b.height);
+      context.fillRect(b.x + shadow, b.y + shadow, b.width, b.height);
       context.fillStyle = PALETTE.buildingWall;
       context.fillRect(b.x, b.y, b.width, b.height);
       context.fillStyle = b.roof;

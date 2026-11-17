@@ -106,7 +106,7 @@ function startStep(G, mission, step) {
     state.targetCar = car;
   }
   if (step.type === 'escape') {
-    G.wanted.addHeat(65);
+    G.wanted.addHeat(55);
   }
 }
 

@@ -57,7 +57,7 @@ function makeBuildings(random, blocks) {
         width: inner.width * 0.76,
         height: inner.height * 0.76,
         roof: pick(random, PALETTE.buildingRoof),
-        height: intIn(random, 14, 30),
+        elevation: intIn(random, 14, 30),
       });
     } else if (count === 2) {
       const half = inner.width / 2 - 10;
@@ -68,7 +68,7 @@ function makeBuildings(random, blocks) {
           width: half,
           height: inner.height * 0.7,
           roof: pick(random, PALETTE.buildingRoof),
-          height: intIn(random, 12, 26),
+          elevation: intIn(random, 12, 26),
         });
       }
     } else {
@@ -78,7 +78,7 @@ function makeBuildings(random, blocks) {
         width: inner.width * 0.55,
         height: inner.height * 0.45,
         roof: pick(random, PALETTE.buildingRoof),
-        height: intIn(random, 12, 24),
+        elevation: intIn(random, 12, 24),
       });
       buildings.push({
         x: inner.x + inner.width * 0.6,
@@ -86,7 +86,7 @@ function makeBuildings(random, blocks) {
         width: inner.width * 0.4,
         height: inner.height * 0.45,
         roof: pick(random, PALETTE.buildingRoof),
-        height: intIn(random, 12, 24),
+        elevation: intIn(random, 12, 24),
       });
       buildings.push({
         x: inner.x,
@@ -94,7 +94,7 @@ function makeBuildings(random, blocks) {
         width: inner.width,
         height: inner.height * 0.45,
         roof: pick(random, PALETTE.buildingRoof),
-        height: intIn(random, 12, 24),
+        elevation: intIn(random, 12, 24),
       });
     }
   }

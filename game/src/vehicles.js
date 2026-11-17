@@ -54,8 +54,8 @@ export function driveCar(G, car, control, dt) {
   car.angle += control.steer * def.turn * (0.35 + 0.65 * speedRatio) * forward * dt;
   if (control.throttle > 0) car.speed += control.throttle * def.accel * dt;
   else if (control.throttle < 0) car.speed += control.throttle * def.brake * dt;
-  // Rolling drag, and a hard stop when nothing is pressed.
-  car.speed -= car.speed * 0.9 * dt;
+  // Rolling drag as an exponential decay, so the feel does not depend on step size.
+  car.speed *= Math.exp(-0.9 * dt);
   if (control.throttle === 0 && Math.abs(car.speed) < 12) car.speed = 0;
   car.speed = Math.max(-def.topSpeed * 0.45, Math.min(def.topSpeed, car.speed));
 
