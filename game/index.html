@@ -32,8 +32,11 @@
   body.hide-hud .hud-el { display: none !important; }
   .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10, 12, 16, 0.72); color: #f2f2f2; text-align: center; z-index: 10; }
   /* Title: dark only in the middle band behind the text, so the 3D city
-     shows through at the top and bottom of the cover shot. */
-  #screen-title { background: linear-gradient(rgba(10, 12, 16, 0.42) 0%, rgba(10, 12, 16, 0.84) 34%, rgba(10, 12, 16, 0.84) 70%, rgba(10, 12, 16, 0.42) 100%); }
+     shows through at the top and bottom of the cover shot. The band is
+     light (0.55, was 0.84): at 0.84 the sunset sky read as flat mud and
+     the sun as a brown smudge; the title text keeps its hard shadow and
+     the controls table its own dark panel, so legibility holds. */
+  #screen-title { background: linear-gradient(rgba(10, 12, 16, 0.25) 0%, rgba(10, 12, 16, 0.55) 34%, rgba(10, 12, 16, 0.55) 70%, rgba(10, 12, 16, 0.25) 100%); }
   .screen h1 { font-size: 84px; margin: 0; letter-spacing: 8px; color: #ffd23e; text-shadow: 3px 3px 0 #7a4a12; }
   .title-eyebrow { font-size: 14px; font-weight: 800; letter-spacing: 6px; color: #ffd23e; margin-bottom: 2px; text-shadow: 1px 1px 0 #000; }
   .screen h2 { font-size: 40px; margin: 0; color: #ffd23e; letter-spacing: 4px; }

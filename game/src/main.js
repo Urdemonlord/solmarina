@@ -353,10 +353,12 @@ function frame(now) {
   // the time of day (low and warm at golden hour)
   sun.position.set(G.player.x + dayNight.sunOffset.x, dayNight.sunOffset.y, G.player.z + dayNight.sunOffset.z);
   sun.target.position.set(G.player.x, 0, G.player.z);
-  // the golden-hour sun sits dead-centre behind the title text from the
-  // title camera, where the dark overlay turns it into a brown smudge:
-  // hide it on the title screen, show it everywhere else
-  env.sunDisc.visible = G.screen !== 'title';
+  // the sun disc always faces the camera (a billboard): from the title
+  // camera it reads as a round sun in the upper-left sky, not a squashed
+  // ellipse, and it is never hidden on the title screen (the old hide
+  // existed because the disc sat dead-centre behind the title text; it
+  // now sits upper-left, clear of the text)
+  env.sunDisc.lookAt(camera.position);
   renderer.render(scene, camera);
   if (SHOT) {
     shotFrames++;
@@ -638,11 +640,11 @@ function update(dt, now) {
   for (const u of G.police.units) {
     if (u.kind === 'car') syncCarMesh(u.car);
   }
-  // helicopter mesh follows its state (scaled up: a police heli reads
+  // helicopter mesh follows its state (scaled up 2x: a police heli reads
   // as a toy at 1x from the chase camera, and the HUD banner says it is
   // the reason the tail will not drop)
   heliMesh.visible = G.heli.active;
-  heliMesh.scale.setScalar(1.5);
+  heliMesh.scale.setScalar(2.0);
   if (G.heli.active) {
     heliMesh.position.set(G.heli.x, G.heli.y, G.heli.z);
     heliMesh.userData.rotor.rotation.y += dt * 28;

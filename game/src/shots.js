@@ -18,7 +18,10 @@ export function stageShot(G, name) {
     // shot only: at the normal 520 the hill and towers wash out.
     G.clock = 561;
     if (G.scene && G.scene.fog) { G.scene.fog.near = 300; G.scene.fog.far = 1800; }
-    G.shotCamera = { pos: { x: 0, y: 120, z: 420 }, look: { x: 60, y: 0, z: 100 } };
+    // look nudged west (was x 60): the golden-hour sun disc sits
+    // west-northwest over the ridge, so from here it reads upper-left,
+    // clear of the title text, instead of hiding behind the camera
+    G.shotCamera = { pos: { x: 0, y: 120, z: 420 }, look: { x: -20, y: 0, z: 100 } };
     return;
   }
   if (name === '2-drive') {
@@ -60,37 +63,62 @@ export function stageShot(G, name) {
     car.x = 60; car.z = 280;
     car.heading = Math.PI / 2;
     G.player.x = car.x; G.player.z = car.z;
-    G.cameraRig.snapTo(car.heading);
+    // camera looks 0.3 rad toward the sea (south): the beach, palms,
+    // umbrellas and crowd fill the left third of the frame and the sea
+    // reads beyond them, instead of the frame being all road
+    G.cameraRig.snapTo(car.heading, 0.3);
     // escape mission m2: the objective banner + TERLIHAT indicator read
     G.wanted.addHeat(75); // 4 stars
     const def = G.missions.defs.find((m) => m.id === 'm2');
     G.missions.start(def);
     balanceUnits(G.police, G.wanted.stars, G.player.x, G.player.z, G.rng);
-    // police cars IN FRAME: two cutting across ahead of the player (the
-    // chase camera looks forward, so pursuers behind the player are
-    // invisible); a third closes in from behind
+    // police cars IN FRAME and CLOSE (the v2 complaint: small and far,
+    // bottom half empty road): two cutting across just ahead of the
+    // player, and a third right behind the player on the north lane,
+    // between the camera and the player car, so it reads big in the
+    // lower-right of the frame like the reference's nearest unit
     const units = G.police.units.filter((u) => u.kind === 'car');
     const spots = [
-      { x: 38, z: 274, heading: -Math.PI / 2 }, // ahead-left, facing the player
-      { x: 42, z: 288, heading: -Math.PI / 2 }, // ahead-right, facing the player
-      { x: 84, z: 280, heading: Math.PI / 2 }, // behind, in pursuit
+      { x: 48, z: 275, heading: -Math.PI / 2 }, // ahead-left, facing the player
+      { x: 50, z: 285, heading: -Math.PI / 2 }, // ahead-right, facing the player
+      { x: 62, z: 275.5, heading: Math.PI / 2 }, // behind, in pursuit, big
     ];
     units.forEach((u, i) => {
       const s = spots[i % spots.length];
       u.car.x = s.x; u.car.z = s.z; u.car.heading = s.heading; u.car.speed = 20;
     });
-    // helicopter hovering low and close ahead down the beachfront road,
-    // just above the camera's view axis: the chase camera pitches down
-    // steeply, so a heli at hover height sits above the frame; low, close
-    // and (at 1.5x scale) big, it reads at the top edge like the reference
+    // traffic ahead on the beachfront road (the other v2 complaint:
+    // no cars ahead): four cars strung down the road in front of the
+    // player, so the road ahead is full, not an empty stretch
+    const traffic = G.vehicles.list.filter((c) => c.driver === 'traffic');
+    const trafficSpots = [
+      { x: 44, z: 280, heading: Math.PI / 2 },
+      { x: 36, z: 276, heading: Math.PI / 2 },
+      { x: 27, z: 284, heading: Math.PI / 2 },
+      { x: 18, z: 278, heading: -Math.PI / 2 }, // oncoming
+    ];
+    traffic.slice(0, 4).forEach((c, i) => {
+      c.x = trafficSpots[i].x; c.z = trafficSpots[i].z; c.heading = trafficSpots[i].heading; c.speed = 12;
+    });
+    // helicopter low, close and ahead (2x scale): big across the top of
+    // the frame like the reference, not a toy at the top edge. It sits
+    // SOUTH of the road, over the beach (z 296, not 284): from the chase
+    // camera that puts it upper-left over the sea, clear of the objective
+    // banner, and the camera sees its side, not just its dark underside.
+    // y 5, not 7: updateHeli lerps it toward hover height 20 over the
+    // staged frames, so a y 7 start ends half-clipped at the top edge.
+    // angle pi puts its orbit target north of the player, so it drifts
+    // over the road, not out to sea
     G.heli.active = true;
     G.heli.leaving = false;
-    G.heli.x = 25; G.heli.z = 288; G.heli.y = 7;
-    // crowd of pedestrians on the beach sidewalk watching the chase
+    G.heli.angle = Math.PI;
+    G.heli.x = 42; G.heli.z = 296; G.heli.y = 5;
+    // crowd of pedestrians on the beach sidewalk watching the chase,
+    // two packed rows facing the road (was one loose row facing west)
     G.peds.list.forEach((ped, i) => {
-      ped.x = -20 + (i % 8) * 12;
-      ped.z = 292 + Math.floor(i / 8) * 6;
-      ped.heading = Math.PI / 2;
+      ped.x = -30 + (i % 8) * 14;
+      ped.z = i < 8 ? 291 : 296;
+      ped.heading = 0; // facing north, toward the road
     });
     G.shotCamera = null;
     return;
@@ -107,14 +135,38 @@ export function stageShot(G, name) {
     const car = G.vehicles.list.find((c) => c.type === 'taxi' && !c.driver);
     car.x = 136; car.z = 112; car.heading = -Math.PI / 2;
     G.player.x = STALLS[0].x; G.player.z = STALLS[0].z + 4;
-    G.player.heading = -Math.PI / 4; // facing north-east, down the market row
+    G.player.heading = -Math.PI / 3; // facing east-north-east, down the
+    // market row: stalls 2 and 3 and the gold cafe beacon read across
+    // the frame to the right, instead of sitting behind the minimap
     G.player.onFoot = true;
     G.player.car = null;
-    G.cameraRig.snapTo(-Math.PI / 4);
-    G.peds.list.slice(0, 4).forEach((ped, i) => {
-      const spots = [[104, 130], [120, 128], [140, 130], [152, 126]];
+    G.cameraRig.snapTo(-Math.PI / 3);
+    // shoppers at ALL THREE stalls plus two in the FOREGROUND, one at
+    // each lower corner of the frame (was 4 shoppers at one stall):
+    // the market reads busy, and the bottom half of the frame is people
+    // and street, not empty pavement. Foreground spots are beside the
+    // camera-player axis, not behind the camera: south of the player is
+    // behind the camera from this angle, so the first attempt at (92,134)
+    // never rendered. All face south, toward the camera.
+    G.peds.list.slice(0, 8).forEach((ped, i) => {
+      const spots = [
+        [100, 128], [112, 130], // stall 1 (Sate Madura)
+        [124, 128], [136, 130], // stall 2 (Es Kelapa)
+        [156, 128], [168, 130], // stall 3 (Gorengan)
+        [93, 125], [99, 132], // foreground, lower-left / lower-right
+      ];
       ped.x = spots[i][0]; ped.z = spots[i][1];
-      ped.heading = Math.PI; // facing south, toward the stalls' customers
+      ped.heading = Math.PI;
+    });
+    // traffic on the market street, so the road to the right is busy
+    // too (the taxi is already parked at 136,112)
+    const traffic = G.vehicles.list.filter((c) => c.driver === 'traffic');
+    const trafficSpots = [
+      { x: 180, z: 116, heading: -Math.PI / 2 }, // eastbound
+      { x: 204, z: 124, heading: Math.PI / 2 }, // westbound
+    ];
+    traffic.slice(0, 2).forEach((c, i) => {
+      c.x = trafficSpots[i].x; c.z = trafficSpots[i].z; c.heading = trafficSpots[i].heading; c.speed = 10;
     });
     G.player.money = 150;
     G.player.hasPistol = true;

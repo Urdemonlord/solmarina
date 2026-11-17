@@ -61,6 +61,32 @@ Kamera third-person di belakang, chase cam saat nyetir.
   pernah snap (yaw lerps, framing shot meleset); warna langit dicuci
   karena setRGB linear vs sRGB.
 
+## Polish pass v3 2026-11-18 (composition, Maré Alta bar; Arya rejected v2:
+chase police small/far, no cars ahead, bottom half empty road)
+- 3-chase is composition, not map: police 10-12 units ahead (not 20+)
+  plus a third unit right behind the player, big in the lower frame;
+  4 traffic cars strung ahead on the beachfront road; heli 2x scale,
+  low over the beach south of the road (upper-left, clear of the
+  objective banner, side-on so it reads blue, not a black slab; y 5,
+  since updateHeli lerps it toward hover height 20 over the staged
+  frames); camera yawed 0.3 rad toward the sea so beach/palms/
+  umbrellas/crowd fill the left third; crowd is two packed rows facing
+  the road; beach umbrellas added as static sand decor (own seeded
+  rng, v2 decor layout untouched).
+- 1-start: the sun disc is no longer hidden on the title screen and no
+  longer sits south-west behind the camera: it is west-northwest over
+  the ridge, the title camera looks nudged west so it reads upper-left,
+  clear of the text; the disc billboards to the camera (round, not a
+  squashed ellipse); title overlay lightened 0.84 -> 0.55 mid-band so
+  the sunset sky reads bright instead of flat mud.
+- 4-mission: player faces ENE so stalls 2-3 and the cafe beacon read
+  across the frame; 8 shoppers (all three stalls + two foreground, one
+  at each lower corner of the frame) and 2 traffic cars on the market
+  street, so the bottom half is people and street, not empty pavement.
+  (Foreground spots must sit beside the camera-player axis: south of
+  the player is behind the camera from this angle and never renders.)
+- Map unchanged (already matches the reference).
+
 ## Anti-pillars
 - Bukan GTA: tidak ada nama, logo, karakter, peta atau musik Rockstar.
 - Tidak ada network: semua file lokal di game/, Three.js di-vendor.

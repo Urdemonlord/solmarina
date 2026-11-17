@@ -330,6 +330,18 @@ export function buildEnvironment(scene, seed) {
     palm.position.set(range(rng, px0 + 8, px1 - 8), 0, range(rng, pz0 + 8, pz1 - 8));
     scene.add(palm);
   }
+  // beach umbrellas on the sand (z 300-310, just south of the crowd),
+  // seeded on their own rng so the rest of the decor keeps its v2
+  // layout: the chase shot's crowd sits among them and they read from
+  // the road as a beach strip
+  const umRng = mulberry32(seed + 911);
+  for (let x = -160; x <= 140; x += 24) {
+    if (umRng() < 0.25) continue;
+    const um = makeUmbrella(umRng);
+    um.position.set(x + range(umRng, -6, 6), 0, 298 + range(umRng, 0, 8));
+    um.rotation.y = umRng() * Math.PI;
+    scene.add(um);
+  }
   // hydrants
   for (let i = 0; i < 8; i++) {
     const line = pick(rng, lines);
@@ -386,9 +398,15 @@ export function createDayNight(scene, sun, hemi, env) {
         disc.material.color.setHex(0xdfe8ff);
         disc.scale.setScalar(0.8);
       } else if (t.golden) {
-        disc.position.set(-190, 60, 430);
-        disc.material.color.setHex(0xff8a3c);
-        disc.scale.setScalar(1.4);
+        // west-northwest over the ridge, NOT south-west over the sea: the
+        // title camera sits south looking north, so a south-west disc is
+        // behind it and the title has no visible sun. From the re-aimed
+        // title camera this disc sits upper-left, clear of the title
+        // text; from the west-looking chase camera it is out of frame,
+        // instead of a clipped orange blob at the top edge.
+        disc.position.set(-420, 80, -120);
+        disc.material.color.setHex(0xffd76a);
+        disc.scale.setScalar(1.8);
       } else {
         disc.position.set(200, 190, 430);
         disc.material.color.setHex(0xfff2c0);
@@ -445,6 +463,23 @@ export function makeLamp() {
   arm.position.set(0.7, 4.9, 0);
   g.add(pole, arm, head);
   g.userData.headMat = headMat;
+  return g;
+}
+
+// Beach umbrella: pole + bright cone canopy. Static decor on the sand
+// south of the beachfront road, so the beach reads as a beach (crowd +
+// umbrellas + sea) from the chase camera, like the reference.
+export function makeUmbrella(rng) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 6), mat(0xe8e2d0));
+  pole.position.y = 1.2; pole.castShadow = false;
+  g.add(pole);
+  const canopy = new THREE.Mesh(
+    new THREE.ConeGeometry(1.9, 0.9, 8),
+    mat(pick(rng, [0xe04848, 0xf2c230, 0x2f7fb8, 0xe07856, 0x58a05c, 0xf2f2f2])),
+  );
+  canopy.position.y = 2.7; canopy.castShadow = false;
+  g.add(canopy);
   return g;
 }
 
@@ -513,7 +548,9 @@ export function makeStallMesh(stall) {
 // Police helicopter: body, tail boom + rotor, skids, searchlight cone.
 export function makeHeliMesh() {
   const g = new THREE.Group();
-  const bodyMat = mat(0x2e4a6a);
+  // bright police blue, not dark navy: from the chase camera (below and
+  // behind) a navy heli reads as a black slab; this reads as a helicopter
+  const bodyMat = mat(0x4a7fb8);
   const body = box(2.6, 1.4, 4.2, bodyMat);
   body.position.y = 0;
   const glass = box(2.2, 0.8, 1.2, new THREE.MeshLambertMaterial({ color: 0x9fc4d8, emissive: 0x2a4a5a, emissiveIntensity: 0.4 }));
@@ -838,12 +875,16 @@ export function createSkids(scene) {
 export function createCameraRig(camera) {
   let yaw = 0; // world yaw the camera sits behind
   let freeYaw = 0; // drag offset, decays back to 0
+  let yawOffset = 0; // staged offset off the follow axis (chase shot:
+  // the camera looks 0.3 rad toward the sea so the beach fills the
+  // left of the frame); persists in targetYaw so the per-frame lerp
+  // does not eat it before the staged frame renders
   let trauma = 0;
   let t = 0;
   return {
     addTrauma(amount) { trauma = clamp(trauma + amount, 0, 1); },
     get trauma() { return trauma; },
-    snapTo(heading) { yaw = heading; freeYaw = 0; },
+    snapTo(heading, offset) { yawOffset = offset || 0; yaw = heading + yawOffset; freeYaw = 0; },
     // Title/menu orbit: high, slow, wide — the city fills the frame.
     updateMenu(dt, target, now) {
       t += dt;
@@ -860,7 +901,7 @@ export function createCameraRig(camera) {
       freeYaw += (dragDX || 0) * 0.004;
       freeYaw *= Math.pow(0.5, dt / 1.5); // decay back toward following
       // follow the heading, but let the drag offset persist briefly
-      const targetYaw = heading + freeYaw;
+      const targetYaw = heading + yawOffset + freeYaw;
       yaw += angleDiff(yaw, targetYaw) * Math.min(1, dt * (inCar ? 2.2 : 3.2));
       // higher + further than the old rig, looking a touch further ahead:
       // the old low camera filled the bottom third of the frame with
