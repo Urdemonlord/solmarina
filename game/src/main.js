@@ -7,7 +7,7 @@ import { mulberry32, clamp, turnToward, dist2 } from './random.js';
 import { hourFromClock } from './daynight.js';
 import { Wanted } from './wanted.js';
 import { MissionRunner, nextMissionId, missionById } from './missions.js';
-import { collideBuildings, blockLoop, routePoints } from './city.js';
+import { collideBuildings, collideStalls, blockLoop, routePoints } from './city.js';
 import { createCar, updateCar, collideCars } from './vehicles.js';
 import { createPlayer, updatePlayerOnFoot, syncPlayerMesh } from './player.js';
 import { createTraffic, updateTraffic } from './traffic.js';
@@ -62,6 +62,7 @@ const G = {
   peds: { list: [] },
   cameraRig,
   renderer,
+  scene,
   save: { exists: false },
 };
 G.missions.defs = MISSIONS;
@@ -117,22 +118,24 @@ function meshForPed(ped) {
 const beacon = makeBeaconMesh();
 beacon.visible = false;
 scene.add(beacon);
-// direction arrow: a big floating chevron (cone + shaft) that points at
-// the objective, plus a dashed route line along the road grid
+// direction arrow: a small floating chevron (cone + shaft) that points at
+// the objective, plus a dashed route line along the road grid. Kept small
+// and translucent: it is a hint, not the subject of the frame.
 const arrow = new THREE.Group();
 {
+  const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.85 });
   const shaft = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.16, 1.6, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+    new THREE.CylinderGeometry(0.1, 0.1, 1.0, 8),
+    arrowMat,
   );
   shaft.rotation.x = Math.PI / 2;
-  shaft.position.z = 0.9;
+  shaft.position.z = 0.6;
   const head = new THREE.Mesh(
-    new THREE.ConeGeometry(0.55, 1.5, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+    new THREE.ConeGeometry(0.32, 0.9, 8),
+    arrowMat,
   );
   head.rotation.x = -Math.PI / 2; // cone tip toward -z (the facing direction)
-  head.position.z = -0.6;
+  head.position.z = -0.35;
   arrow.add(shaft, head);
 }
 arrow.visible = false;
@@ -443,8 +446,10 @@ function update(dt, now) {
     };
     updateCar(car, inputCar, dt);
     if (input.handbrake) car.speed *= Math.max(0, 1 - 3 * dt);
-    // building collision
-    if (collideBuildings(buildings, car, CAR.radius)) {
+    // building + stall collision (both run: no short-circuit)
+    const hitBuilding = collideBuildings(buildings, car, CAR.radius);
+    const hitStall = collideStalls(car, CAR.radius);
+    if (hitBuilding || hitStall) {
       const impact = Math.abs(car.speed);
       if (impact > 8) {
         car.damage = Math.min(CAR.maxDamage, car.damage + impact * 0.8);
@@ -607,10 +612,10 @@ function update(dt, now) {
     beacon.userData.gem.rotation.y += dt * 2;
     beacon.userData.gem.position.y = 4.5 + Math.sin(now * 0.003) * 0.4;
     arrow.visible = true;
-    arrow.position.set(p.x, 4.2 + Math.sin(now * 0.004) * 0.3, p.z);
+    arrow.position.set(p.x, 3.6 + Math.sin(now * 0.004) * 0.25, p.z);
     arrow.rotation.y = Math.atan2(-(marker.x - p.x), -(marker.z - p.z));
-    arrow.scale.setScalar(p.onFoot ? 0.5 : 1); // smaller on foot: the
-    // camera is closer, a full-size arrow would cover the stall/market
+    arrow.scale.setScalar(p.onFoot ? 0.35 : 0.6); // small on foot (the
+    // camera is close) and in the car: a hint, not a billboard
     // dashed route along the road grid, refreshed twice a second
     G.routeTimer -= dt;
     if (G.routeTimer <= 0) {
@@ -633,8 +638,11 @@ function update(dt, now) {
   for (const u of G.police.units) {
     if (u.kind === 'car') syncCarMesh(u.car);
   }
-  // helicopter mesh follows its state
+  // helicopter mesh follows its state (scaled up: a police heli reads
+  // as a toy at 1x from the chase camera, and the HUD banner says it is
+  // the reason the tail will not drop)
   heliMesh.visible = G.heli.active;
+  heliMesh.scale.setScalar(1.5);
   if (G.heli.active) {
     heliMesh.position.set(G.heli.x, G.heli.y, G.heli.z);
     heliMesh.userData.rotor.rotation.y += dt * 28;

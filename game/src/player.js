@@ -2,7 +2,7 @@
 // WASD moves relative to the camera yaw; Shift runs; the mesh walks.
 import { PLAYER } from './config.js';
 import { clamp, turnToward } from './random.js';
-import { collideBuildings } from './city.js';
+import { collideBuildings, collideStalls } from './city.js';
 import { poseWalk, poseIdle } from './render.js';
 
 export function createPlayer(x, z, heading) {
@@ -38,6 +38,7 @@ export function updatePlayerOnFoot(player, input, camYaw, dt, buildings) {
   player.x += dx * speed * dt;
   player.z += dz * speed * dt;
   collideBuildings(buildings, player, PLAYER.radius);
+  collideStalls(player, PLAYER.radius);
   player.walkPhase += dt * speed * 1.6;
   return player.heading;
 }

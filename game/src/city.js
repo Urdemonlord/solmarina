@@ -1,7 +1,7 @@
 // Solmarina 3D: city layout data (pure). The renderer builds meshes from
 // this; collision and traffic read the same data. x east, z south, centre (0,0).
 // Roads run on grid lines; blocks sit between them.
-import { WORLD, DISTRICTS } from './config.js';
+import { WORLD, DISTRICTS, STALLS } from './config.js';
 import { mulberry32, range, pick } from './random.js';
 
 export const BUILDING_COLORS = [
@@ -76,11 +76,11 @@ export function generateBuildings(seed) {
   return list;
 }
 
-// AABB collision: push a circle (x, z, r) out of every building it overlaps.
-// Returns true when a push happened.
-export function collideBuildings(buildings, p, r) {
+// AABB collision: push a circle (x, z, r) out of every box it overlaps.
+// Returns true when a push happened. `boxes` are {x, z, w, d}.
+export function collideAABBs(boxes, p, r) {
   let hit = false;
-  for (const b of buildings) {
+  for (const b of boxes) {
     const hw = b.w / 2, hd = b.d / 2;
     const cx = Math.max(b.x - hw, Math.min(p.x, b.x + hw));
     const cz = Math.max(b.z - hd, Math.min(p.z, b.z + hd));
@@ -102,6 +102,19 @@ export function collideBuildings(buildings, p, r) {
     }
   }
   return hit;
+}
+
+// AABB collision: push a circle (x, z, r) out of every building it overlaps.
+// Returns true when a push happened.
+export function collideBuildings(buildings, p, r) {
+  return collideAABBs(buildings, p, r);
+}
+
+// Market stalls are solid counters (3.4 x 1.6): the player and cars stop
+// at them instead of walking/driving through the goods. The vendor stands
+// on the near side, so the counter's near face is what the player meets.
+export function collideStalls(p, r) {
+  return collideAABBs(STALLS.map((s) => ({ x: s.x, z: s.z, w: 3.4, d: 1.6 })), p, r);
 }
 
 // Is (x, z) on a road (within half road width of a grid line)?

@@ -2,7 +2,7 @@
 // The DOM lives in index.html; this wires it and draws the minimap and
 // the full map screen (Tab) with its phone/job panel.
 import { WORLD, CONTACTS, DISTRICTS, STALLS } from './config.js';
-import { roadLines, districtAt, routePoints } from './city.js';
+import { roadLines, districtAt, routePoints, PARK_BLOCK } from './city.js';
 
 export function createHud(buildings) {
   const $ = (id) => document.getElementById(id);
@@ -32,35 +32,69 @@ export function createHud(buildings) {
   function mapX(x) { return ((x + 320) / 660) * MW; }
   function mapZ(z) { return ((z + 320) / 720) * MH; }
 
-  function drawMinimap(G) {
-    ctx.fillStyle = '#23272e';
-    ctx.fillRect(0, 0, MW, MH);
-    // beach + water (south)
-    ctx.fillStyle = '#2f7fb8';
-    ctx.fillRect(0, mapZ(WORLD.waterZ), MW, MH - mapZ(WORLD.waterZ));
-    ctx.fillStyle = '#e8d5a0';
-    ctx.fillRect(0, mapZ(WORLD.beachZ), MW, mapZ(WORLD.waterZ) - mapZ(WORLD.beachZ));
-    // roads
-    ctx.strokeStyle = '#5d636e';
-    ctx.lineWidth = 3;
+  // Shared street-map base, drawn by both the minimap and the full map
+  // screen: a real map, not a grid of squares. Land is pale, roads are
+  // cased lines that carve the blocks into shapes, the park is green,
+  // Bukit Warna is a contoured hill, and the south edge is sand + sea.
+  // g: 2d context, W/H: canvas size, X/Z: world -> px mapping fns.
+  function paintBaseMap(g, W, H, X, Z) {
+    g.fillStyle = '#e9e2c6'; // land
+    g.fillRect(0, 0, W, H);
+    // park block
+    const px0 = lines[PARK_BLOCK.bx], px1 = lines[PARK_BLOCK.bx + 1];
+    const pz0 = lines[PARK_BLOCK.bz], pz1 = lines[PARK_BLOCK.bz + 1];
+    g.fillStyle = '#7fb069';
+    g.fillRect(X(px0), Z(pz0), X(px1) - X(px0), Z(pz1) - Z(pz0));
+    // Bukit Warna hill: brown disc + contour rings, like a hill on a map
+    const hx = X(-235), hy = Z(-235), hr = (95 / 660) * W;
+    g.fillStyle = '#c08d55';
+    g.beginPath(); g.arc(hx, hy, hr, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = '#a87a48';
+    g.lineWidth = 2;
+    g.beginPath(); g.arc(hx, hy, hr * 0.62, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(hx, hy, hr * 0.3, 0, Math.PI * 2); g.stroke();
+    // beach + sea (south)
+    g.fillStyle = '#e8d5a0';
+    g.fillRect(0, Z(WORLD.beachZ), W, H - Z(WORLD.beachZ));
+    g.fillStyle = '#2f7fb8';
+    g.fillRect(0, Z(WORLD.waterZ), W, H - Z(WORLD.waterZ));
+    // roads: grey casing, then a pale inner line, so each road reads as
+    // a street and the blocks between them read as shapes
+    const roadW = (WORLD.road / 660) * W;
     for (const l of lines) {
-      ctx.beginPath(); ctx.moveTo(mapX(l), 0); ctx.lineTo(mapX(l), MH); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, mapZ(l)); ctx.lineTo(MW, mapZ(l)); ctx.stroke();
+      // vertical
+      g.fillStyle = '#b3a888';
+      g.fillRect(X(l) - roadW / 2 - 1.5, 0, roadW + 3, H);
+      g.fillStyle = '#f8f4e4';
+      g.fillRect(X(l) - roadW / 2, 0, roadW, H);
+      // horizontal
+      g.fillStyle = '#b3a888';
+      g.fillRect(0, Z(l) - roadW / 2 - 1.5, W, roadW + 3);
+      g.fillStyle = '#f8f4e4';
+      g.fillRect(0, Z(l) - roadW / 2, W, roadW);
     }
-    // buildings
-    ctx.fillStyle = '#9aa0ab';
-    for (const b of buildings) {
-      ctx.fillRect(mapX(b.x - b.w / 2), mapZ(b.z - b.d / 2), Math.max(1.5, (b.w / 660) * MW), Math.max(1.5, (b.d / 720) * MH));
-    }
-    // mission blip
+  }
+
+  function drawMinimap(G) {
+    paintBaseMap(ctx, MW, MH, mapX, mapZ);
+    // mission route along the road grid (the reference minimap draws it)
     const step = G.missions.currentStep();
     if (step && step.target) {
+      const pts = routePoints({ x: G.player.x, z: G.player.z }, step.target);
+      ctx.strokeStyle = '#e04848';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      pts.forEach((p, i) => { if (i === 0) ctx.moveTo(mapX(p.x), mapZ(p.z)); else ctx.lineTo(mapX(p.x), mapZ(p.z)); });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // mission blip
       const pulse = 3 + Math.sin(performance.now() / 200) * 1.5;
       ctx.fillStyle = '#ffd23e';
       ctx.beginPath(); ctx.arc(mapX(step.target.x), mapZ(step.target.z), pulse + 2, 0, Math.PI * 2); ctx.fill();
     }
     // traffic
-    ctx.fillStyle = '#c8ccd4';
+    ctx.fillStyle = '#5d636e';
     for (const c of G.vehicles.list) {
       if (c.driver === 'traffic') ctx.fillRect(mapX(c.x) - 1, mapZ(c.z) - 1, 2, 2);
     }
@@ -83,9 +117,11 @@ export function createHud(buildings) {
     ctx.translate(mapX(G.player.x), mapZ(G.player.z));
     ctx.rotate(-G.player.heading);
     ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#22242a';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(0, -6); ctx.lineTo(4.5, 5); ctx.lineTo(0, 2.5); ctx.lineTo(-4.5, 5);
-    ctx.closePath(); ctx.fill();
+    ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
 
@@ -95,35 +131,28 @@ export function createHud(buildings) {
     if (!mapCtx) return;
     const mx = (x) => ((x + 320) / 660) * MAPW;
     const mz = (z) => ((z + 320) / 720) * MAPH;
-    mapCtx.fillStyle = '#e8dcc0';
-    mapCtx.fillRect(0, 0, MAPW, MAPH);
-    // water + beach (south)
-    mapCtx.fillStyle = '#2f7fb8';
-    mapCtx.fillRect(0, mz(WORLD.waterZ), MAPW, MAPH - mz(WORLD.waterZ));
-    mapCtx.fillStyle = '#e8d5a0';
-    mapCtx.fillRect(0, mz(WORLD.beachZ), MAPW, mz(WORLD.waterZ) - mz(WORLD.beachZ));
-    // districts (tinted + labelled)
+    paintBaseMap(mapCtx, MAPW, MAPH, mx, mz);
+    // wave arcs in the sea, so the coast reads as a coast, not a ruler edge
+    mapCtx.strokeStyle = 'rgba(255,255,255,0.55)';
+    mapCtx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      mapCtx.beginPath();
+      mapCtx.arc(MAPW * (0.25 + i * 0.25), mz(WORLD.waterZ + 18 + i * 14), 14, Math.PI * 1.15, Math.PI * 1.85);
+      mapCtx.stroke();
+    }
+    // districts (tinted + labelled, white halo so the text reads on any tint)
     const tints = ['rgba(224,120,86,0.25)', 'rgba(95,158,143,0.25)', 'rgba(224,168,60,0.25)', 'rgba(138,155,176,0.25)', 'rgba(88,160,92,0.25)', 'rgba(201,123,132,0.25)', 'rgba(93,125,217,0.25)', 'rgba(47,127,184,0.25)'];
     mapCtx.font = 'bold 15px Arial, sans-serif';
     mapCtx.textAlign = 'center';
     DISTRICTS.forEach((d, i) => {
       mapCtx.fillStyle = tints[i % tints.length];
       mapCtx.fillRect(mx(d.x - d.w / 2), mz(d.z - d.h / 2), (d.w / 660) * MAPW, (d.h / 720) * MAPH);
+      mapCtx.strokeStyle = 'rgba(255,255,255,0.85)';
+      mapCtx.lineWidth = 3;
+      mapCtx.strokeText(d.name.toUpperCase(), mx(d.x), mz(d.z) + 5);
       mapCtx.fillStyle = '#22242a';
       mapCtx.fillText(d.name.toUpperCase(), mx(d.x), mz(d.z) + 5);
     });
-    // roads
-    mapCtx.strokeStyle = '#5d636e';
-    mapCtx.lineWidth = 4;
-    for (const l of lines) {
-      mapCtx.beginPath(); mapCtx.moveTo(mx(l), 0); mapCtx.lineTo(mx(l), MAPH); mapCtx.stroke();
-      mapCtx.beginPath(); mapCtx.moveTo(0, mz(l)); mapCtx.lineTo(MAPW, mz(l)); mapCtx.stroke();
-    }
-    // buildings
-    mapCtx.fillStyle = '#9aa0ab';
-    for (const b of buildings) {
-      mapCtx.fillRect(mx(b.x - b.w / 2), mz(b.z - b.d / 2), Math.max(2, (b.w / 660) * MAPW), Math.max(2, (b.d / 720) * MAPH));
-    }
     // mission route polyline (player -> target along the road grid)
     const step = G.missions.currentStep();
     const target = step && step.target ? step.target : null;
@@ -212,14 +241,19 @@ export function createHud(buildings) {
     showMap(G) {
       if (!el.mapScreen) return;
       el.mapScreen.style.display = 'flex';
+      document.body.classList.add('hide-hud'); // the map has its own panel
       drawMap(G);
       fillPhone(G);
     },
-    hideMap() { if (el.mapScreen) el.mapScreen.style.display = 'none'; },
+    hideMap() { if (el.mapScreen) el.mapScreen.style.display = 'none'; document.body.classList.remove('hide-hud'); },
     showScreen(name, saveInfo) {
       for (const [key, node] of Object.entries(el.screens)) {
         node.style.display = key === name ? 'flex' : 'none';
       }
+      // the gameplay HUD (money, clock, minimap, prompts) belongs to play
+      // only: the title screen is a clean cover, like the reference, and
+      // the pause/busted/wasted/map screens have their own panels
+      document.body.classList.toggle('hide-hud', name !== 'play');
       if (name === 'title') {
         if (saveInfo) {
           el.titleSave.style.display = 'block';

@@ -28,6 +28,13 @@ function box(w, h, d, material) {
 }
 
 // ---------- facade textures ----------
+// One call builds three canvases for the same window layout (same rng
+// draws, so the lit windows match across all three):
+//   day      — facade in daylight, a few lit windows
+//   night    — darkened facade, most windows lit warm
+//   emissive — black, only the lit windows: the night material's
+//              emissiveMap, so lit windows actually GLOW after dark
+//              instead of going dark with the rest of the facade.
 const facadeCache = new Map();
 function shade(color, f) {
   const r = Math.round(((color >> 16) & 255) * f);
@@ -35,29 +42,51 @@ function shade(color, f) {
   const b = Math.round((color & 255) * f);
   return (r << 16) | (g << 8) | b;
 }
-function facadeTexture(color, floors, cols, rng, night) {
-  const key = color + '/' + floors + '/' + cols + (night ? '/night' : '');
+function facadeTextures(color, floors, cols, rng) {
+  const key = color + '/' + floors + '/' + cols;
   if (facadeCache.has(key)) return facadeCache.get(key);
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = '#' + (night ? shade(color, 0.45) : color).toString(16).padStart(6, '0');
-  g.fillRect(0, 0, 128, 256);
-  // subtle vertical shading
-  g.fillStyle = 'rgba(0,0,0,0.08)';
-  g.fillRect(0, 0, 128, 12);
+  const hex = '#' + color.toString(16).padStart(6, '0');
+  const nightHex = '#' + shade(color, 0.45).toString(16).padStart(6, '0');
+  const day = document.createElement('canvas');
+  const night = document.createElement('canvas');
+  const emissive = document.createElement('canvas');
+  for (const c of [day, night, emissive]) { c.width = 128; c.height = 256; }
+  const gDay = day.getContext('2d');
+  const gNight = night.getContext('2d');
+  const gEm = emissive.getContext('2d');
+  gDay.fillStyle = hex;
+  gDay.fillRect(0, 0, 128, 256);
+  gNight.fillStyle = nightHex;
+  gNight.fillRect(0, 0, 128, 256);
+  gEm.fillStyle = '#000000';
+  gEm.fillRect(0, 0, 128, 256);
+  // subtle vertical shading on the day facade
+  gDay.fillStyle = 'rgba(0,0,0,0.08)';
+  gDay.fillRect(0, 0, 128, 12);
   const ww = 128 / cols, wh = 256 / floors;
   for (let f = 0; f < floors; f++) {
     for (let col = 0; col < cols; col++) {
-      const lit = rng() < (night ? 0.55 : 0.18);
-      g.fillStyle = lit ? '#ffe9a8' : (night ? '#10141c' : '#2e3a46');
-      g.fillRect(col * ww + ww * 0.22, f * wh + wh * 0.25, ww * 0.56, wh * 0.5);
+      const x = col * ww + ww * 0.22, y = f * wh + wh * 0.25, w = ww * 0.56, h = wh * 0.5;
+      const litDay = rng() < 0.18;
+      const litNight = rng() < 0.65;
+      gDay.fillStyle = litDay ? '#ffe9a8' : '#2e3a46';
+      gDay.fillRect(x, y, w, h);
+      gNight.fillStyle = litNight ? '#ffd76a' : '#10141c';
+      gNight.fillRect(x, y, w, h);
+      if (litNight) {
+        gEm.fillStyle = '#ffd76a';
+        gEm.fillRect(x, y, w, h);
+      }
     }
   }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  facadeCache.set(key, tex);
-  return tex;
+  const out = {};
+  for (const [name, canvas] of [['day', day], ['night', night], ['emissive', emissive]]) {
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    out[name] = tex;
+  }
+  facadeCache.set(key, out);
+  return out;
 }
 
 // ---------- ground texture (one canvas: roads, sidewalks, park, beach) ----------
@@ -90,7 +119,7 @@ function groundTexture(seed) {
     g.fillRect(sx(b.x - WORLD.block / 2), sz(b.z - WORLD.block / 2), ux(WORLD.block), uz(WORLD.block));
   }
   // roads
-  g.fillStyle = '#3a3a40';
+  g.fillStyle = '#4a4a52';
   for (const l of lines) {
     g.fillRect(sx(l - WORLD.road / 2), 0, ux(WORLD.road), S);
     g.fillRect(0, sz(l - WORLD.road / 2), S, uz(WORLD.road));
@@ -167,17 +196,16 @@ export function buildEnvironment(scene, seed) {
   water.position.set(0, 0.15, WORLD.waterZ + 45);
   scene.add(water);
 
-  // buildings (record each facade material + its day/night textures so the
-  // day/night applier can swap lit windows in after dark)
+  // buildings (record each facade material + its day/night/emissive
+  // textures so the day/night applier can swap lit windows in after dark)
   const buildings = generateBuildings(seed);
   const facadeMats = [];
   for (const b of buildings) {
     const floors = Math.max(2, Math.round(b.h / 6));
     const cols = Math.max(2, Math.round(b.w / 9));
-    const dayTex = facadeTexture(b.color, floors, cols, rng, false);
-    const nightTex = facadeTexture(b.color, floors, cols, rng, true);
-    const side = new THREE.MeshLambertMaterial({ map: dayTex });
-    facadeMats.push({ material: side, day: dayTex, night: nightTex });
+    const tex = facadeTextures(b.color, floors, cols, rng);
+    const side = new THREE.MeshLambertMaterial({ map: tex.day, emissive: 0x000000, emissiveMap: tex.emissive });
+    facadeMats.push({ material: side, day: tex.day, night: tex.night });
     const roof = mat(0x6b6258);
     const mesh = new THREE.Mesh(boxGeo, [side, side, roof, roof, side, side]);
     mesh.scale.set(b.w, b.h, b.d);
@@ -190,20 +218,20 @@ export function buildEnvironment(scene, seed) {
   // Bukit Warna: hillside district north-west, a low hill crowded with
   // small colourful houses (the title screen's skyline anchor).
   const hill = new THREE.Mesh(
-    new THREE.ConeGeometry(95, 34, 24),
+    new THREE.ConeGeometry(95, 55, 24),
     new THREE.MeshLambertMaterial({ color: 0x9a7b52 }),
   );
-  hill.position.set(-235, 17, -235);
+  hill.position.set(-235, 27.5, -235);
   hill.receiveShadow = true;
   scene.add(hill);
   const hillRng = mulberry32(seed + 77);
-  for (let i = 0; i < 42; i++) {
+  for (let i = 0; i < 56; i++) {
     const a = hillRng() * Math.PI * 2;
     const r = 12 + hillRng() * 68;
     const x = -235 + Math.sin(a) * r;
     const z = -235 + Math.cos(a) * r;
-    const y = Math.max(0, 34 * (1 - r / 95));
-    const hw = 4 + hillRng() * 3, hd = 4 + hillRng() * 3, hh = 3.5 + hillRng() * 3;
+    const y = Math.max(0, 55 * (1 - r / 95));
+    const hw = 6 + hillRng() * 3, hd = 6 + hillRng() * 3, hh = 5 + hillRng() * 3;
     const house = box(hw, hh, hd, mat(pick(hillRng, [0xe07856, 0xe8dcc0, 0x5f9e8f, 0xe0a83c, 0xc97b84, 0x8a9bb0, 0xd95d4e, 0x58a05c])));
     house.position.set(x, y + hh / 2 - 0.5, z);
     house.rotation.y = hillRng() * Math.PI;
@@ -216,23 +244,35 @@ export function buildEnvironment(scene, seed) {
     scene.add(hRoof);
   }
 
-  // distant mountains: north ridge + two islands south beyond the sea,
-  // so the horizon is never a flat fog line.
-  for (const [mx, mz, ms, mh] of [[-260, -430, 150, 90], [-60, -460, 190, 120], [160, -440, 140, 80], [320, -420, 170, 100], [-320, 470, 120, 55], [260, 480, 150, 70]]) {
+  // distant mountains: an overlapping north ridge + two islands south
+  // beyond the sea, so the horizon reads as a mountain range, not
+  // isolated pale pyramids. Dusky mauve/plum at sunset, dark slate
+  // to the south; varied heights and a random twist per peak. Kept
+  // light enough that the shaded faces read as dusk, not black.
+  const ridgeRng = mulberry32(seed + 31);
+  for (const [mx, mz, ms, mh, mc] of [
+    [-340, -440, 170, 95, 0x8a6f83], [-220, -460, 190, 125, 0x9a6f88],
+    [-90, -450, 170, 100, 0x7d6a84], [40, -465, 200, 130, 0x9a6f88],
+    [170, -445, 160, 90, 0x8a6f83], [290, -430, 180, 110, 0x756a80],
+    [380, -450, 150, 80, 0x8a6f83],
+    [-320, 480, 120, 55, 0x5a6a80], [260, 490, 150, 70, 0x5a6a80],
+  ]) {
     const m = new THREE.Mesh(
-      new THREE.ConeGeometry(ms, mh, 7),
-      new THREE.MeshLambertMaterial({ color: 0x5d6f7d }),
+      new THREE.ConeGeometry(ms, mh, 6),
+      new THREE.MeshLambertMaterial({ color: mc }),
     );
     m.position.set(mx, mh / 2 - 4, mz);
+    m.rotation.y = ridgeRng() * Math.PI;
     scene.add(m);
   }
-  // distant skyline towers north-east, outside the drivable city
-  for (const [tx, tz, th] of [[190, -380, 62], [240, -370, 78], [290, -385, 54], [150, -395, 44]]) {
+  // distant skyline towers north-east, outside the drivable city: a
+  // downtown cluster just north of the city edge, tall enough to rise
+  // above the rooftops into the title screen's skyline
+  for (const [tx, tz, th] of [[170, -300, 85], [220, -295, 110], [270, -300, 75], [290, -295, 95], [130, -300, 60]]) {
     const floors = Math.max(4, Math.round(th / 6));
-    const dayTex = facadeTexture(0x8a9bb0, floors, 5, rng, false);
-    const nightTex = facadeTexture(0x8a9bb0, floors, 5, rng, true);
-    const side = new THREE.MeshLambertMaterial({ map: dayTex });
-    facadeMats.push({ material: side, day: dayTex, night: nightTex });
+    const tex = facadeTextures(0x8a9bb0, floors, 5, rng);
+    const side = new THREE.MeshLambertMaterial({ map: tex.day, emissive: 0x000000, emissiveMap: tex.emissive });
+    facadeMats.push({ material: side, day: tex.day, night: tex.night });
     const tower = new THREE.Mesh(boxGeo, [side, side, mat(0x4a4640), mat(0x4a4640), side, side]);
     tower.scale.set(26, th, 26);
     tower.position.set(tx, th / 2, tz);
@@ -298,7 +338,10 @@ export function buildEnvironment(scene, seed) {
     h.position.set(line + WORLD.road / 2 + 2, 0, t);
     scene.add(h);
   }
-  // night-market stalls (Pasar Malam) + a vendor standing at each one
+  // night-market stalls (Pasar Malam) + a vendor standing at each one.
+  // Each stall also gets a warm point light: at night the market glows
+  // and the ground in front of the counter is lit, instead of the whole
+  // foreground falling to black.
   const stalls = [];
   for (const s of STALLS) {
     const stall = makeStallMesh(s);
@@ -308,7 +351,10 @@ export function buildEnvironment(scene, seed) {
     vendor.position.set(s.x, 0, s.z + 2.2);
     vendor.rotation.y = Math.PI;
     scene.add(vendor);
-    stalls.push({ ...s, mesh: stall });
+    const glow = new THREE.PointLight(0xffb45e, 0, 18, 1.6);
+    glow.position.set(s.x, 3.2, s.z);
+    scene.add(glow);
+    stalls.push({ ...s, mesh: stall, light: glow });
   }
   return { buildings, water, parkTrees, facadeMats, lampMats, sunDisc, stalls };
 }
@@ -351,9 +397,23 @@ export function createDayNight(scene, sun, hemi, env) {
       disc.lookAt(0, 60, -200);
       if (bucket !== lastBucket) {
         lastBucket = bucket;
-        for (const f of env.facadeMats) f.material.map = t.night ? f.night : f.day;
+        for (const f of env.facadeMats) {
+          f.material.map = t.night ? f.night : f.day;
+          // lit windows glow after dark (emissiveMap holds only the lit
+          // windows, so the facade itself stays dark)
+          if (t.night) {
+            f.material.emissive.setHex(0xffc46b);
+            f.material.emissiveIntensity = 1.0;
+          } else {
+            f.material.emissive.setHex(0x000000);
+            f.material.emissiveIntensity = 0;
+          }
+        }
         for (const m of env.lampMats) m.emissiveIntensity = t.lampsOn ? 2.4 : 0.4;
-        for (const s of env.stalls) s.mesh.userData.bulbMat.emissiveIntensity = t.lampsOn ? 2.4 : 0.5;
+        for (const s of env.stalls) {
+          s.mesh.userData.bulbMat.emissiveIntensity = t.lampsOn ? 2.4 : 0.5;
+          s.light.intensity = t.lampsOn ? 30 : 0;
+        }
       }
       return t;
     },
@@ -479,12 +539,13 @@ export function makeHeliMesh() {
     strut.position.set(sx * 1.1, -0.75, 0.8);
     g.add(skid, strut);
   }
-  // searchlight cone pointing down
+  // searchlight cone pointing down (subtle: at golden hour a bright
+  // cone reads as a grey sail, so it stays faint)
   const beam = new THREE.Mesh(
-    new THREE.ConeGeometry(3, 22, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.ConeGeometry(2.5, 16, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
   );
-  beam.position.y = -11.5;
+  beam.position.y = -8.5;
   beam.rotation.x = Math.PI; // apex up at the heli
   g.add(body, glass, tail, fin, mast, rotor, beam);
   g.userData.rotor = rotor;
@@ -801,15 +862,20 @@ export function createCameraRig(camera) {
       // follow the heading, but let the drag offset persist briefly
       const targetYaw = heading + freeYaw;
       yaw += angleDiff(yaw, targetYaw) * Math.min(1, dt * (inCar ? 2.2 : 3.2));
-      const dist = inCar ? 10.5 : 7.5;
-      const height = inCar ? 5.5 : 4.5;
+      // higher + further than the old rig, looking a touch further ahead:
+      // the old low camera filled the bottom third of the frame with
+      // empty near road, in the car and on foot alike. In the car the
+      // rig is close and low instead, so the player's car fills the
+      // bottom of the frame like the reference chase shot.
+      const dist = inCar ? 9.5 : 5.5;
+      const height = inCar ? 5.2 : 4.6;
       const cx = target.x + Math.sin(yaw) * dist;
       const cz = target.z + Math.cos(yaw) * dist;
       const sh = trauma * trauma;
       const shx = sh * 0.9 * Math.sin(t * 39.7);
       const shy = sh * 0.6 * Math.sin(t * 51.3);
       camera.position.set(cx + shx, height + shy, cz);
-      camera.lookAt(target.x, inCar ? 1.6 : 1.4, target.z);
+      camera.lookAt(target.x, inCar ? 1.6 : 1.5, target.z);
     },
   };
 }
