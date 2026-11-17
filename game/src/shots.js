@@ -78,15 +78,33 @@ function stageChase(G) {
   car.damage = 55;
   G.wanted.addHeat(70);
   // Two patrol cars right on the player's tail, plus the standing response.
-  const cop1 = spawnCar(G.vehicles, 'police', 1180, 1400, 0, 'police');
-  const cop2 = spawnCar(G.vehicles, 'police', 1600, 1180, Math.PI / 2, 'police');
+  const cop1 = spawnCar(G.vehicles, 'police', 1250, 1400, 0, 'police');
+  const cop2 = spawnCar(G.vehicles, 'police', 1560, 1300, Math.PI / 2, 'police');
   G.police.units.push(
     { kind: 'car', car: cop1, bustTimer: 0, shootTimer: 0, ramCooldown: 0, gotOut: false },
     { kind: 'car', car: cop2, bustTimer: 0, shootTimer: 0, ramCooldown: 0, gotOut: false },
   );
-  followWaypoints(G, car, [{ x: 2600, y: 1400 }, { x: 2600, y: 1800 }], STEP, 5);
-  stepPolice(G, STEP);
-  // A few skid marks and smoke so the chase reads at a glance.
+  // Slower than a getaway so the patrol cars stay in the frame behind.
+  const waypoints = [{ x: 2200, y: 1400 }, { x: 2200, y: 1800 }];
+  let index = 0;
+  for (let step = 0; step < 4 / STEP; step += 1) {
+    if (index < waypoints.length) {
+      driveToward(G, car, waypoints[index], STEP, 0.55);
+      if (Math.hypot(waypoints[index].x - car.x, waypoints[index].y - car.y) < 80) index += 1;
+    } else {
+      driveCar(G, car, { throttle: 0, steer: 0 }, STEP);
+    }
+    G.player.x = car.x;
+    G.player.y = car.y;
+    G.player.angle = car.angle;
+    stepTraffic(G, STEP);
+    stepPeds(G, STEP);
+    stepPolice(G, STEP);
+    G.effects.step(STEP);
+    G.time += STEP;
+    G.camera.x = car.x;
+    G.camera.y = car.y;
+  }
   G.effects.addSkid(car.x - 40, car.y, car.angle);
   G.effects.addSkid(car.x - 80, car.y, car.angle);
   G.effects.smoke(car.x, car.y - 10);
@@ -97,7 +115,8 @@ function stageMission(G) {
   const def = G.missions.defs[0];
   startMission(G, def);
   const car = putPlayerInCar(G, 'taxi', 1000, 1000, 0);
-  followWaypoints(G, car, [{ x: 1400, y: 1000 }, { x: 1400, y: 1200 }], STEP, 6);
+  // Still rolling toward the plaza when the frame is taken.
+  followWaypoints(G, car, [{ x: 1400, y: 1000 }], STEP, 2.5);
   return { screen: SCREEN_PLAY };
 }
 

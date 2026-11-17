@@ -152,11 +152,11 @@ function makeParkingSpots(random) {
     if (random() < 0.5) {
       const v = pick(random, ROADS.vertical);
       const side = random() < 0.5 ? -1 : 1;
-      spots.push({ x: v + side * (HALF_ROAD + 18), y: range(random, 260, BEACH.sandTop - 120), angle: Math.PI / 2 });
+      spots.push({ x: v + side * (HALF_ROAD + 14), y: range(random, 260, BEACH.sandTop - 120), angle: Math.PI / 2 });
     } else {
       const h = pick(random, ROADS.horizontal);
       const side = random() < 0.5 ? -1 : 1;
-      spots.push({ x: range(random, 260, WORLD.width - 260), y: h + side * (HALF_ROAD + 18), angle: 0 });
+      spots.push({ x: range(random, 260, WORLD.width - 260), y: h + side * (HALF_ROAD + 14), angle: 0 });
     }
   }
   return spots;

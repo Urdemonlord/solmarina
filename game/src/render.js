@@ -273,6 +273,14 @@ export function createRenderer(canvas) {
     const def = car.def;
     const halfL = def.length / 2;
     const halfW = def.width / 2;
+    // The player's car gets a soft white ring so it never blends into traffic.
+    if (car.driver === 'player') {
+      context.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.ellipse(car.x, car.y, halfL + 10, halfW + 10, car.angle, 0, Math.PI * 2);
+      context.stroke();
+    }
     context.save();
     context.translate(car.x, car.y);
     context.rotate(car.angle);
@@ -468,7 +476,7 @@ export function createRenderer(canvas) {
       const lines = [
         'Raka, kurir Solmarina, terseret ke dunia bawah kota.',
         'Curi mobil, kabur dari polisi, kerjakan misi Marlo.',
-        'WASD jalan / nyetir  •  Shift lari  •  E masuk mobil  •  F pukul  •  M bisu',
+        'WASD gerak • Shift lari • E mobil • F pukul • M bisu',
         G.save && G.save.exists ? 'Ada save tersimpan: tekan C untuk lanjut.' : '',
       ];
       drawPanel('SOLMARINA', lines, G.save && G.save.exists ? 'Enter mulai baru  •  C lanjutkan  •  klik untuk mulai' : 'Tekan Enter atau klik untuk mulai');

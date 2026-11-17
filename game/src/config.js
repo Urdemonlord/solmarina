@@ -101,7 +101,7 @@ export const PALETTE = {
   money: '#3fae5a',
   text: '#f5f1e6',
   textDark: '#2a2620',
-  panel: 'rgba(24, 22, 18, 0.82)',
+  panel: 'rgba(24, 22, 18, 0.88)',
   star: '#f2c94c',
   marker: '#f2c94c',
   cop: '#2a5fb5',
