@@ -1,50 +1,57 @@
-# Solmarina — design brief (gta6-01)
+# Solmarina 3D — game brief (one page)
 
-Premis, kata-kata Arya apa adanya: "lanjut build buat jadi no 1 di make.fun".
-Game kejahatan open-world 2D top-down ala GTA 1/2, kota pesisir original
-"Solmarina". Protagonis Raka, kurir yang terseret ke dunia bawah kota.
-Tidak ada apa pun dari Rockstar: tanpa nama, karakter, logo, peta, art, atau
-musik GTA.
+Design read: a 3D open-world crime game for a desktop browser player, with a
+sun-soaked GTA San Andreas low-poly language, leaning toward bold flat colours,
+chunky HUD, hard shadows. No purple gradients, no glassmorphism, no generic
+card-grid menus.
 
-Core loop: jalan kaki / curi mobil / kabur dari polisi / kerjakan misi / dapat
-duit / buka misi berikutnya. Menit pertama: title -> Raka di jalan dekat mobil
-parkir, prompt "E untuk masuk mobil", misi 1 langsung tersedia di HUD.
+## Premise (in Arya's words, as given)
+Rebuild Solmarina as 3D, like GTA San Andreas: low-poly third-person.
+Same city, same Raka, same 5-mission arc, now in 3D.
 
-Tampilan: canvas 2D top-down, kamera mengikuti halus + trauma shake, kota
-grid jalan dengan blok bangunan, taman, pantai di selatan, marina di timur.
-Palet Mediterania hangat: terakota, pasir, teal laut, atap merah bata.
-Siang cerah, bayangan lembut ke arah tenggara. Semua art prosedural canvas
-(tanpa aset luar). Suara prosedural WebAudio (mesin, sirene, pukulan,
-pickup, jingle misi). M mute.
+## Premise
+Raka, kurir Solmarina, terseret ke dunia bawah kota. Curi mobil, kabur dari
+polisi, kerjakan misi Marlo. Kota pesisir Solmarina: jalan grid, taman,
+pantai, marina. Semua nama, karakter, cerita, art dan suara original.
+Nothing from Rockstar.
 
-Sistem (urut bangun):
-1. Kota: grid jalan, blok, bangunan bervariasi, trotoar, taman, pantai,
-   properti (pohon, lampu, hydrant). Kamera follow.
-2. Jalan kaki: WASD/arrows, Shift sprint, E masuk/keluar mobil, F pukul.
-3. Mobil: sedan, taksi, sport, truk, polisi. Fisika arcade (aksel, rem,
-   setir), tabrakan bangunan/ped/mobil, damage + asap. Curi mobil parkir,
-   carjack mobil berisi orang (naik wanted).
-4. Traffic: mobil AI ikut jaringan jalan; pejalan kaki di trotoar, lari
-   saat takut.
-5. Wanted 1-5 bintang: naik saat kejahatan, turun saat sembunyi. Polisi
-   spawn dan kejar/tubruk; polisi jalan kaki di wanted rendah. Busted saat
-   ketangkap, Wasted saat health 0.
-6. Misi + cerita: intro + 5 misi (antar paket, kejar target, kabur dari
-   polisi, curi mobil spesifik, antar bos) dengan waypoint, panah, timer,
-   reward $, fail state, unlock berurutan.
-7. Combat: pukul di jalan kaki; pistol pickup dengan aim mouse; polisi
-   balas tembak di wanted tinggi.
-8. HUD: minimap live, health, duit, bintang, kecepatan, objektif, jam.
-9. Start screen, pause, Busted/Wasted, save localStorage (duit, misi,
-   posisi) + tombol Continue.
-10. Polish: partikel (debu, percikan, asap), shake saat tabrakan, bekas
-    ban, damage state mobil.
+## Core loop
+Jalan kaki atau nyetir -> lihat penanda misi -> kerjakan misi (antar, kejar,
+kabur, rampas, antar bos) -> dapat uang -> wanted naik -> polisi ngejar ->
+kabur atau ketangkep -> repeat, misi berikutnya terbuka.
 
-Anti-pilar: jangan jadi clone GTA (nama/peta/art Rockstar), jangan 3D
-(scope dipotong ke 2D top-down), jangan aset AI / aset luar, jangan
-network request apa pun, jangan scope-creep (tidak ada multiplayer, tidak
-ada interior, tidak ada radio musik berlisensi).
+## First minute
+Title (SOLMARINA + cerita + kontrol) -> Enter -> Raka berdiri di jalan dekat
+taman, taksi parkir di depan -> E masuk mobil -> nyetir keliling kota ->
+tekan Enter, misi pertama: antar paket ke Kafe Ombak, 150 detik, $150.
 
-Handover jujur (diisi saat selesai): apa yang lolos unit + headless test,
-apa yang masih lemah, apa yang ditebak. "Not yet played by a person."
-sampai ada manusia yang benar-benar memainkannya.
+## Look
+Low-poly Three.js: gedung kotak warna hangat (terakota, krem, teal, mustard),
+tekstur jendela dari canvas, jalan aspal gelap + garis kuning, langit biru
+cerah + kabut hangat, laut di selatan, bayangan satu directional light.
+Kamera third-person di belakang, chase cam saat nyetir.
+
+## Systems (build order)
+1. City + renderer + kamera third-person + jalan kaki
+2. Mobil + nyetir + tabrakan + curi mobil
+3. Traffic + pejalan kaki
+4. Wanted + polisi (mobil + jalan kaki) + Busted/Wasted
+5. 5 misi + waypoint + panah + timer + hadiah
+6. Combat (pukul + pistol) + pickup
+7. HUD + minimap + save + layar title/pause
+8. Audio prosedural + partikel + shake + skid
+
+## Anti-pillars
+- Bukan GTA: tidak ada nama, logo, karakter, peta atau musik Rockstar.
+- Tidak ada network: semua file lokal di game/, Three.js di-vendor.
+- Tidak ada kamera yang bikin mual: follow halus, shake kecil, tanpa roll.
+- Tidak ada misi yang soft-lock: semua target bisa dicapai jalan kaki/mobil.
+
+## Vendored
+- three.js 0.160.0 UMD (build/three.min.js, MIT, Three.js Authors),
+  di game/vendor/three.min.js. Bukan source kami, tidak dihitung gate.
+
+## Handover (honest)
+- Belum dimainkan manusia, belum didengar telinga manusia.
+- Headless Chrome + SwiftShader saja untuk verifikasi visual.
+- Handling arcade, AI traffic sederhana (loop jalan), tanpa handbrake/drift.

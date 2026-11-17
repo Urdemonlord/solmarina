@@ -1,173 +1,144 @@
-// The police response: foot cops who chase and grab, and patrol cars that
-// chase and ram. The unit count follows the wanted stars; units spawn on a
-// road near the player and melt away when the heat drops.
-
-import { POLICE, WANTED } from './config.js';
-import { randomRoadPoint } from './city.js';
-import { carRadius, driveCar, spawnCar } from './vehicles.js';
-import { spawnPed } from './pedestrians.js';
+// Solmarina 3D: police AI (browser only). Foot cops chase and grab the
+// player; police cars chase and ram. Both shoot at 3+ stars.
+import { POLICE, WANTED, SPAWNS } from './config.js';
+import { createCar } from './vehicles.js';
+import { turnToward, clamp, dist2 } from './random.js';
 
 export function createPolice() {
-  return { units: [] };
+  return { units: [] }; // { kind: 'car'|'foot', car?, ped?, bustTimer }
 }
 
-function spawnPoliceCar(G) {
-  const point = randomRoadPoint(G.random);
-  const car = spawnCar(G.vehicles, 'police', point.x, point.y, G.random() * Math.PI * 2, 'police');
-  const unit = { kind: 'car', car, bustTimer: 0, shootTimer: 0, ramCooldown: 0, gotOut: false };
-  G.police.units.push(unit);
-  return unit;
+// How many police units the wanted level calls for.
+export function desiredUnits(stars) {
+  if (stars <= 0) return { cars: 0, foot: 0 };
+  if (stars === 1) return { cars: 0, foot: 1 };
+  if (stars === 2) return { cars: 1, foot: 1 };
+  if (stars === 3) return { cars: 2, foot: 2 };
+  if (stars === 4) return { cars: 3, foot: 2 };
+  return { cars: POLICE.maxCars, foot: POLICE.maxFoot };
 }
 
-function spawnFootCop(G) {
-  const point = randomRoadPoint(G.random);
-  const ped = spawnPed(G, G.peds, false);
-  ped.x = point.x;
-  ped.y = point.y;
-  ped.cop = true;
-  ped.speed = POLICE.footSpeed;
-  ped.health = 60;
-  const unit = { kind: 'foot', ped, bustTimer: 0, shootTimer: 0, ramCooldown: 0, gotOut: false };
-  G.police.units.push(unit);
-  return unit;
-}
-
-function ensureCounts(G) {
-  const stars = G.wanted.stars;
-  const wantCars = WANTED.policeCars[stars];
-  const wantFoot = WANTED.policeFoot[stars];
-  let cars = 0;
-  let foot = 0;
-  for (const unit of G.police.units) {
-    if (unit.kind === 'car') cars += 1;
-    else foot += 1;
-  }
-  while (cars < wantCars) {
-    spawnPoliceCar(G);
-    cars += 1;
-  }
-  while (foot < wantFoot) {
-    spawnFootCop(G);
-    foot += 1;
-  }
-  // When the heat drops, the farthest units give up first.
-  if (cars > wantCars || foot > wantFoot) {
-    G.police.units.sort((a, b) => {
-      const da = a.kind === 'car' ? Math.hypot(a.car.x - G.player.x, a.car.y - G.player.y) : Math.hypot(a.ped.x - G.player.x, a.ped.y - G.player.y);
-      const db = b.kind === 'car' ? Math.hypot(b.car.x - G.player.x, b.car.y - G.player.y) : Math.hypot(b.ped.x - G.player.x, b.ped.y - G.player.y);
-      return db - da;
+// Spawn one unit near the player (off-screen-ish: 60-90 units away).
+export function spawnUnit(police, kind, px, pz, rng) {
+  const a = rng() * Math.PI * 2;
+  const d = 60 + rng() * 30;
+  const x = px + Math.sin(a) * d;
+  const z = pz + Math.cos(a) * d;
+  if (kind === 'car') {
+    const car = createCar('police', x, z, 0);
+    car.driver = 'police';
+    police.units.push({ kind: 'car', car, bustTimer: 0 });
+  } else {
+    police.units.push({
+      kind: 'foot',
+      ped: {
+        x, z, heading: 0, speed: POLICE.footSpeed,
+        state: 'chase', shirt: 0x1e3a5f, pants: 0x1e3a5f,
+        walkPhase: 0, fleeTimer: 0, cop: true, dead: false,
+      },
+      bustTimer: 0,
     });
-    while (cars > wantCars || foot > wantFoot) {
-      const unit = G.police.units.pop();
-      if (unit.kind === 'car') {
-        unit.car.driver = null;
-        cars -= 1;
+  }
+}
+
+export function removeUnit(police, unit) {
+  const i = police.units.indexOf(unit);
+  if (i >= 0) police.units.splice(i, 1);
+  if (unit.kind === 'car' && unit.car) unit.car.driver = null;
+}
+
+// Keep the unit count at the wanted level's demand.
+export function balanceUnits(police, stars, px, pz, rng) {
+  const want = desiredUnits(stars);
+  let cars = 0, foot = 0;
+  for (const u of police.units) {
+    if (u.kind === 'car') cars++;
+    else foot++;
+  }
+  while (cars < want.cars) { spawnUnit(police, 'car', px, pz, rng); cars++; }
+  while (foot < want.foot) { spawnUnit(police, 'foot', px, pz, rng); foot++; }
+  // when wanted falls, excess units drive/walk off: mark them leaving
+  for (const u of police.units) {
+    if (u.kind === 'car' && cars > want.cars) { u.leaving = true; cars--; }
+    if (u.kind === 'foot' && foot > want.foot) { u.leaving = true; foot--; }
+  }
+  // drop units that are far away and leaving
+  for (let i = police.units.length - 1; i >= 0; i--) {
+    const u = police.units[i];
+    if (!u.leaving) continue;
+    const p = u.kind === 'car' ? u.car : u.ped;
+    if (dist2(p.x, p.z, px, pz) > 120 * 120) removeUnit(police, u);
+  }
+}
+
+// Chase the player. Returns 'busted' when a foot cop grabs the player,
+// 'ram' when a police car hits the player's car (handled by caller too).
+export function updatePolice(police, dt, player, stars) {
+  let busted = false;
+  for (const u of police.units) {
+    if (u.kind === 'car') {
+      const car = u.car;
+      const dx = player.x - car.x, dz = player.z - car.z;
+      const d = Math.hypot(dx, dz);
+      const targetHeading = Math.atan2(-dx, -dz);
+      car.heading = turnToward(car.heading, targetHeading, dt * 2.4);
+      const want = u.leaving ? 0 : Math.min(POLICE.carSpeed, 20 + d * 0.4);
+      car.speed += clamp(want - car.speed, -26 * dt, 18 * dt);
+      car.x += -Math.sin(car.heading) * car.speed * dt;
+      car.z += -Math.cos(car.heading) * car.speed * dt;
+    } else {
+      const ped = u.ped;
+      const dx = player.x - ped.x, dz = player.z - ped.z;
+      const d = Math.hypot(dx, dz);
+      ped.heading = Math.atan2(-dx, -dz);
+      ped.x += -Math.sin(ped.heading) * ped.speed * dt;
+      ped.z += -Math.cos(ped.heading) * ped.speed * dt;
+      ped.walkPhase += dt * ped.speed * 2.2;
+      // grab: on-foot player, cop close for bustTime
+      if (player.onFoot && d < POLICE.bustRadius) {
+        u.bustTimer += dt;
+        if (u.bustTimer > POLICE.bustTime) busted = true;
       } else {
-        unit.ped.cop = false;
-        unit.ped.state = 'walk';
-        foot -= 1;
+        u.bustTimer = Math.max(0, u.bustTimer - dt);
       }
     }
   }
+  return busted;
 }
 
-function stepCarUnit(G, unit, dt) {
-  const player = G.player;
-  const car = unit.car;
-  if (car.destroyed) return;
-  const targetX = player.car ? player.car.x : player.x;
-  const targetY = player.car ? player.car.y : player.y;
-  // Aim slightly ahead of a moving target.
-  const lead = 0.35;
-  const px = player.car ? player.car.x + Math.cos(player.car.angle) * player.car.speed * lead : targetX;
-  const py = player.car ? player.car.y + Math.sin(player.car.angle) * player.car.speed * lead : targetY;
-  const desired = Math.atan2(py - car.y, px - car.x);
-  let diff = desired - car.angle;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  const dist = Math.hypot(targetX - car.x, targetY - car.y);
-  const steer = Math.max(-1, Math.min(1, diff * 2.5));
-  const result = driveCar(G, car, { throttle: 1, steer }, dt);
-  if (result.hit && Math.abs(car.speed) > 100) {
-    G.events.push({ kind: 'carCrash', x: car.x, y: car.y, strength: 0.4 });
-    G.audio.crash(0.5);
+// Can any police unit see the player? (for wanted decay)
+export function policeCanSee(police, player) {
+  for (const u of police.units) {
+    const p = u.kind === 'car' ? u.car : u.ped;
+    if (dist2(p.x, p.z, player.x, player.z) < 70 * 70) return true;
   }
-  // Ramming the player's car hurts the player, on a cooldown so it is not a blender.
-  unit.ramCooldown -= dt;
-  if (player.car && dist < carRadius(car) + carRadius(player.car) + 4 && unit.ramCooldown <= 0) {
-    unit.ramCooldown = 1.2;
-    player.health = Math.max(0, player.health - POLICE.ramDamage);
-    G.camera.trauma = Math.min(1, G.camera.trauma + 0.45);
-    G.audio.crash(0.7);
-    G.events.push({ kind: 'rammed', x: player.x, y: player.y, strength: 0.7 });
-    if (player.health <= 0) G.events.push({ kind: 'wasted' });
-  }
-  // A patrol car that catches the player on foot stops and its driver gets out.
-  if (player.onFoot && dist < 130 && !unit.gotOut) {
-    unit.gotOut = true;
-    const ped = spawnPed(G, G.peds, false);
-    ped.x = car.x + 24;
-    ped.y = car.y;
-    ped.cop = true;
-    ped.speed = POLICE.footSpeed;
-    ped.health = 60;
-    G.police.units.push({ kind: 'foot', ped, bustTimer: 0, shootTimer: 0, ramCooldown: 0, gotOut: false });
-    car.driver = null;
-    car.speed = 0;
-  }
+  return false;
 }
 
-function stepFootUnit(G, unit, dt) {
-  const player = G.player;
-  const ped = unit.ped;
-  if (ped.down) return;
-  const dx = player.x - ped.x;
-  const dy = player.y - ped.y;
-  const dist = Math.hypot(dx, dy);
-  if (dist > 1) {
-    ped.angle = Math.atan2(dy, dx);
-    const step = Math.min(dist, POLICE.footSpeed * dt);
-    ped.x += (dx / dist) * step;
-    ped.y += (dy / dist) * step;
-  }
-  // Grabbing the player on foot, or a stalled car, fills the bust meter.
-  const inCarSlow = !player.onFoot && player.car && Math.abs(player.car.speed) < 15;
-  const near = player.onFoot ? dist < POLICE.bustRadius : inCarSlow && dist < POLICE.carBustRadius;
-  const need = player.onFoot ? POLICE.bustSeconds : POLICE.carBustSeconds;
-  if (near) {
-    unit.bustTimer += dt;
-    if (unit.bustTimer >= need) G.events.push({ kind: 'busted' });
-  } else {
-    unit.bustTimer = Math.max(0, unit.bustTimer - dt * 2);
-  }
-  // At three stars and up, cops shoot when close enough.
-  unit.shootTimer -= dt;
-  if (G.wanted.stars >= 3 && dist < POLICE.shootRange && unit.shootTimer <= 0) {
-    unit.shootTimer = POLICE.shootCooldown;
-    G.events.push({ kind: 'copShot', x: ped.x, y: ped.y, tx: player.x, ty: player.y });
-    G.audio.gunshot();
-    if (G.random() < 0.7) {
-      player.health = Math.max(0, player.health - POLICE.bulletDamage);
-      G.camera.trauma = Math.min(1, G.camera.trauma + 0.25);
-      if (player.health <= 0) G.events.push({ kind: 'wasted' });
-    }
-  }
+// Busted: fine, clear wanted, respawn at the police station.
+export function applyBusted(player, wanted) {
+  const fine = Math.min(POLICE.fine, player.money);
+  player.money -= fine;
+  player.health = 100;
+  wanted.clear();
+  player.x = SPAWNS.policeStation.x;
+  player.z = SPAWNS.policeStation.z;
+  player.heading = 0;
+  if (player.car) { player.car.driver = null; player.car = null; }
+  player.onFoot = true;
+  return fine;
 }
 
-export function stepPolice(G, dt) {
-  ensureCounts(G);
-  for (const unit of G.police.units) {
-    if (unit.kind === 'car') stepCarUnit(G, unit, dt);
-    else stepFootUnit(G, unit, dt);
-  }
-  // A siren is audible while any patrol car is within earshot.
-  let near = false;
-  for (const unit of G.police.units) {
-    if (unit.kind !== 'car') continue;
-    if (Math.hypot(unit.car.x - G.player.x, unit.car.y - G.player.y) < 700) {
-      near = true;
-      break;
-    }
-  }
-  G.audio.siren(near, dt);
+// Wasted: fine, clear wanted, respawn at the hospital.
+export function applyWasted(player, wanted) {
+  const fine = Math.min(POLICE.fine, player.money);
+  player.money -= fine;
+  player.health = 100;
+  wanted.clear();
+  player.x = SPAWNS.hospital.x;
+  player.z = SPAWNS.hospital.z;
+  player.heading = 0;
+  if (player.car) { player.car.driver = null; player.car = null; }
+  player.onFoot = true;
+  return fine;
 }

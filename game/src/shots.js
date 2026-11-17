@@ -1,133 +1,65 @@
-// The screenshot scenes behind ?shot=1-start|2-drive|3-chase|4-mission. Each
-// one plays the real rules forward from the seeded world for a fixed number of
-// steps, steered by a small autopilot that drives along the roads, so the frame
-// is what a short game really looks like and the same seed always gives the
-// same frame.
+// Solmarina 3D: ?shot= scene staging for screenshots (browser only).
+// Each scene stages the world, then main renders it twice and sets
+// window.__solmarinaReady. Scenes: 1-start (title), 2-drive, 3-chase,
+// 4-mission. All state is set from the live game, never faked.
+import { SPAWNS } from './config.js';
+import { balanceUnits } from './police.js';
 
-import { STEP } from './config.js';
-import { SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-import { driveCar, spawnCar } from './vehicles.js';
-import { startMission } from './missions.js';
-import { stepTraffic } from './traffic.js';
-import { stepPeds } from './pedestrians.js';
-import { stepPolice } from './police.js';
-
-/** Steer a car toward a point on the road, at cruising throttle. */
-function driveToward(G, car, target, dt, throttle) {
-  const desired = Math.atan2(target.y - car.y, target.x - car.x);
-  let diff = desired - car.angle;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  const steer = Math.max(-1, Math.min(1, diff * 2.5));
-  driveCar(G, car, { throttle: throttle ?? 0.7, steer }, dt);
-}
-
-/** Follow a list of road waypoints, moving to the next when close. */
-function followWaypoints(G, car, waypoints, dt, seconds) {
-  let index = 0;
-  for (let step = 0; step < seconds / STEP; step += 1) {
-    if (index >= waypoints.length) {
-      driveCar(G, car, { throttle: 0, steer: 0 }, dt);
-    } else {
-      driveToward(G, car, waypoints[index], dt, 0.75);
-      if (Math.hypot(waypoints[index].x - car.x, waypoints[index].y - car.y) < 80) index += 1;
-    }
-    G.player.x = car.x;
-    G.player.y = car.y;
-    G.player.angle = car.angle;
-    stepTraffic(G, STEP);
-    stepPeds(G, STEP);
-    G.effects.step(STEP);
-    G.time += STEP;
-    G.camera.x = car.x;
-    G.camera.y = car.y;
+export function stageShot(G, name) {
+  const params = new URLSearchParams(window.location.search);
+  const seed = Number(params.get('seed') || 1);
+  if (name === '1-start') {
+    G.screen = 'title';
+    // camera vantage: high diagonal across the city toward the beach, so
+    // rooftops, streets and the coast all sit behind the title panel
+    G.shotCamera = { pos: { x: -140, y: 95, z: -190 }, look: { x: 80, y: 0, z: 130 } };
+    return;
   }
-}
-
-function putPlayerInCar(G, type, x, y, angle, color) {
-  const car = spawnCar(G.vehicles, type, x, y, angle, 'player');
-  if (color) car.color = color;
-  G.player.car = car;
-  G.player.onFoot = false;
-  G.player.x = x;
-  G.player.y = y;
-  G.player.angle = angle;
-  return car;
-}
-
-function stageStart(G) {
-  G.camera.x = 1600;
-  G.camera.y = 1200;
-  for (let index = 0; index < 5 / STEP; index += 1) {
-    stepTraffic(G, STEP);
-    stepPeds(G, STEP);
-    G.effects.step(STEP);
-    G.time += STEP;
+  if (name === '2-drive') {
+    G.screen = 'play';
+    const car = G.vehicles.list.find((c) => c.type === 'sports' && !c.driver);
+    G.player.x = car.x + 3; G.player.z = car.z;
+    G.enterCar(car, true);
+    car.speed = 22;
+    car.heading = Math.PI; // driving south down the main road
+    G.player.x = car.x; G.player.z = car.z;
+    G.shotCamera = null;
+    return;
   }
-  return { screen: SCREEN_TITLE };
-}
-
-function stageDrive(G) {
-  const car = putPlayerInCar(G, 'sedan', 1400, 1000, 0);
-  followWaypoints(G, car, [{ x: 2600, y: 1000 }, { x: 2600, y: 1400 }], STEP, 7);
-  return { screen: SCREEN_PLAY };
-}
-
-function stageChase(G) {
-  const car = putPlayerInCar(G, 'sport', 1400, 1400, 0);
-  car.damage = 55;
-  G.wanted.addHeat(70);
-  // Two patrol cars right on the player's tail, plus the standing response.
-  const cop1 = spawnCar(G.vehicles, 'police', 1250, 1400, 0, 'police');
-  const cop2 = spawnCar(G.vehicles, 'police', 1560, 1300, Math.PI / 2, 'police');
-  G.police.units.push(
-    { kind: 'car', car: cop1, bustTimer: 0, shootTimer: 0, ramCooldown: 0, gotOut: false },
-    { kind: 'car', car: cop2, bustTimer: 0, shootTimer: 0, ramCooldown: 0, gotOut: false },
-  );
-  // Slower than a getaway so the patrol cars stay in the frame behind.
-  const waypoints = [{ x: 2200, y: 1400 }, { x: 2200, y: 1800 }];
-  let index = 0;
-  for (let step = 0; step < 4 / STEP; step += 1) {
-    if (index < waypoints.length) {
-      driveToward(G, car, waypoints[index], STEP, 0.55);
-      if (Math.hypot(waypoints[index].x - car.x, waypoints[index].y - car.y) < 80) index += 1;
-    } else {
-      driveCar(G, car, { throttle: 0, steer: 0 }, STEP);
-    }
-    G.player.x = car.x;
-    G.player.y = car.y;
-    G.player.angle = car.angle;
-    stepTraffic(G, STEP);
-    stepPeds(G, STEP);
-    stepPolice(G, STEP);
-    G.effects.step(STEP);
-    G.time += STEP;
-    G.camera.x = car.x;
-    G.camera.y = car.y;
+  if (name === '3-chase') {
+    G.screen = 'play';
+    const car = G.vehicles.list.find((c) => c.type === 'sports' && !c.driver);
+    G.player.x = car.x + 3; G.player.z = car.z;
+    G.enterCar(car, true);
+    car.speed = 18;
+    car.damage = 62;
+    car.heading = Math.PI;
+    G.wanted.addHeat(75); // 4 stars
+    balanceUnits(G.police, G.wanted.stars, G.player.x, G.player.z, G.rng);
+    // put two police cars right behind the player
+    const units = G.police.units.filter((u) => u.kind === 'car');
+    units.forEach((u, i) => {
+      u.car.x = car.x + (i === 0 ? 8 : -6);
+      u.car.z = car.z + 12 + i * 6;
+      u.car.heading = Math.PI;
+      u.car.speed = 20;
+    });
+    G.shotCamera = null;
+    return;
   }
-  G.effects.addSkid(car.x - 40, car.y, car.angle);
-  G.effects.addSkid(car.x - 80, car.y, car.angle);
-  G.effects.smoke(car.x, car.y - 10);
-  return { screen: SCREEN_PLAY };
-}
-
-function stageMission(G) {
-  const def = G.missions.defs[0];
-  startMission(G, def);
-  const car = putPlayerInCar(G, 'taxi', 1000, 1000, 0);
-  // Still rolling toward the plaza when the frame is taken.
-  followWaypoints(G, car, [{ x: 1400, y: 1000 }], STEP, 2.5);
-  return { screen: SCREEN_PLAY };
-}
-
-/**
- * Set the game to the named scene (1-start, 2-drive, 3-chase, 4-mission; any
- * other name is 1-start) and return the screen to draw over it.
- */
-export function stageShot(name, G) {
-  G.events.length = 0;
-  if (name === '2-drive') return stageDrive(G);
-  if (name === '3-chase') return stageChase(G);
-  if (name === '4-mission') return stageMission(G);
-  return stageStart(G);
+  if (name === '4-mission') {
+    G.screen = 'play';
+    const car = G.vehicles.list.find((c) => c.type === 'taxi' && !c.driver);
+    G.player.x = car.x + 3; G.player.z = car.z;
+    G.enterCar(car, true);
+    car.speed = 15;
+    car.heading = Math.PI * 0.5; // east toward the cafe
+    const def = G.missions.defs.find((m) => m.id === 'm0');
+    G.missions.start(def);
+    // stage the player mid-route to the cafe
+    car.x = 60; car.z = 120;
+    G.player.x = car.x; G.player.z = car.z;
+    G.shotCamera = null;
+    return;
+  }
 }

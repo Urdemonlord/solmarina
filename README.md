@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/gta6-01/Urdemonlord/solmarina/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/Urdemonlord/solmarina/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Solmarina is an original 2D top-down open-world crime game set in a sun-soaked coastal city. Play as Raka: steal cars, outrun the police, and work through 5 story missions across the city, with a HUD and minimap, traffic and pedestrians, a wanted level, and a save.
+Solmarina is an original 3D low-poly open-world crime game set in a sun-soaked coastal city. Play as Raka: steal cars, outrun the police, and work through 5 story missions across the city, with a HUD and minimap, traffic and pedestrians, a wanted level, and a save.
 
 ## Run it
 
