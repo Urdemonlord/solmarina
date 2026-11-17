@@ -87,6 +87,49 @@ chase police small/far, no cars ahead, bottom half empty road)
   the player is behind the camera from this angle and never renders.)
 - Map unchanged (already matches the reference).
 
+## v4: skyscrapers from the player's angle + the phone menu (Arya, 04:57 WIB)
+- 2-drive re-staged as the downtown tower canyon, from the player's
+  angle: the sports car drives NORTH up the x=200 road straight at the
+  skyline cluster (towers 60-110 at z -295..-300), golden hour, fog
+  pushed out so the towers stay crisp. The low follow camera puts the
+  towers over the rooftops in the top of the frame, like the reference
+  title shot. Traffic ahead on the same road + peds on the sidewalks,
+  so the frame bottom is street life, not empty asphalt. (The towers
+  were only ever seen from the high title camera before; from street
+  level they are 60-110 tall against 8-42 city buildings. Tried the
+  player closer at z=-200: cross-traffic parks a truck between the
+  camera and the car, so the shot stays at mid-block z=-160. From the
+  low chase camera the near street wall occludes the distant towers;
+  the skyline reads in the title shot, the drive shot reads as a
+  lively street. A looming-towers drive shot would need a higher
+  camera or a gap in the street wall, not just a closer player.)
+- The phone is now a real menu (was a static panel: decorative tabs,
+  everything shown at once). Tabs PETA / MISI / KONTAK / STATS switch
+  panes, by mouse click and by keys 1-4 on the map screen. PETA: the
+  current job card (giver avatar + reward + countdown) + the 5-mission
+  progress list. MISI: the whole arc with rewards. KONTAK: contacts
+  with avatars, from config. STATS: money, missions, wanted, health,
+  weapon, clock. Status bar "SOLMARINA NET 5G" + game clock. Buttons:
+  KEMBALI (Tab) / SIMPAN / MENU AWAL (goes to the title).
+- 4-mission re-staged as the map + phone menu screen (Tab), like the
+  reference: full city map with the mission route on the left, the HP
+  menu open on the PETA tab on the right. Night 21:17 at Pasar Malam,
+  mission m0 active, $150, pistol 24 rounds, 2 stars. The night-market
+  gameplay shot is dropped from the set; the market is still in the
+  game and still has its [E] stalls.
+- Staging trap: the boot code forced every non-title shot back to
+  'play'; the map shot sets G.shotScreen = 'map' and the boot opens
+  the map from it (hiding the title first, skipping the play update).
+- Heading trap (caught by the v5 screenshot, not the tests): forward
+  is (-sin h, -cos h), so heading 0 = north, PI/2 = west, -PI/2 =
+  EAST, PI = south. The first 2-drive re-stage set -PI/2 for "north",
+  so the car drove east, the camera looked east, and every car staged
+  north of the player sat ~85 deg off-axis, out of frame; the "tower"
+  filling the frame was a city building east of the player. The live
+  check asserted the same wrong heading, so it passed while the shot
+  was broken. Now the check asserts heading 0 AND traffic ahead
+  (z < player.z - 20) on the tower road.
+
 ## Anti-pillars
 - Bukan GTA: tidak ada nama, logo, karakter, peta atau musik Rockstar.
 - Tidak ada network: semua file lokal di game/, Three.js di-vendor.

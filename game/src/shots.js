@@ -26,11 +26,27 @@ export function stageShot(G, name) {
   }
   if (name === '2-drive') {
     G.screen = 'play';
+    // golden hour (17:21) in the downtown tower canyon, from the player's
+    // angle: the sports car drives NORTH up the x=200 road straight at
+    // the skyline cluster (towers 60-110 at z -295..-300, x 130-290), so
+    // the towers loom ahead over the rooftops instead of sitting behind
+    // the title camera. The follow camera is low behind the car, so the
+    // towers fill the top of the frame like the reference title shot.
+    // Fog is pushed out (as on 1-start) so the towers stay crisp.
+    G.clock = 561;
+    if (G.scene && G.scene.fog) { G.scene.fog.near = 300; G.scene.fog.far = 1800; }
     const car = G.vehicles.list.find((c) => c.type === 'sports' && !c.driver);
+    car.x = 200; car.z = -160; // mid-block on the x=200 road: a clean
+    // frame. (z=-200 puts the player on a cross street, where
+    // cross-traffic parks a truck between the camera and the car.)
     G.player.x = car.x + 3; G.player.z = car.z;
     G.enterCar(car, true);
     car.speed = 22;
-    car.heading = Math.PI; // driving south down the main road
+    car.heading = 0; // driving north, toward the towers. Heading 0 IS
+    // north here: forward is (-sin h, -cos h), so 0 -> (0,-1) = -z.
+    // -PI/2 is EAST (the v5 bug: the car drove east down a cross
+    // street, the camera looked east, and all the traffic staged
+    // north of the player sat ~85 deg off-axis, out of frame).
     G.player.x = car.x; G.player.z = car.z;
     G.cameraRig.snapTo(car.heading); // snap: the rig lerps and would not
     // converge in the two staged frames, leaving the camera off-axis
@@ -38,12 +54,23 @@ export function stageShot(G, name) {
     // street with cars in it, not an empty stretch of asphalt
     const traffic = G.vehicles.list.filter((c) => c.driver === 'traffic');
     const spots = [
-      { x: 120, z: 24, heading: Math.PI },
-      { x: 124, z: 52, heading: Math.PI },
-      { x: 116, z: 78, heading: 0 }, // oncoming taxi lane
+      { x: 196, z: -200, heading: 0 }, // same direction, west lane, northbound
+      { x: 196, z: -235, heading: 0 },
+      { x: 196, z: -262, heading: 0 }, // truck silhouette by the towers
+      { x: 204, z: -215, heading: Math.PI }, // oncoming taxi lane, southbound
     ];
-    traffic.slice(0, 3).forEach((c, i) => {
+    traffic.slice(0, 4).forEach((c, i) => {
       c.x = spots[i].x; c.z = spots[i].z; c.heading = spots[i].heading; c.speed = 12;
+    });
+    // pedestrians on the tower-road sidewalks, so the frame bottom is
+    // people and street, not empty asphalt
+    G.peds.list.slice(0, 6).forEach((ped, i) => {
+      const spots = [
+        [186, -180], [214, -195], [186, -215],
+        [214, -230], [186, -245], [214, -255],
+      ];
+      ped.x = spots[i][0]; ped.z = spots[i][1];
+      ped.heading = 0; // facing the road
     });
     G.shotCamera = null;
     return;
@@ -124,50 +151,20 @@ export function stageShot(G, name) {
     return;
   }
   if (name === '4-mission') {
-    G.screen = 'play';
-    // night (21:17) at the Pasar Malam street market: lit towers, stalls,
-    // the [E] interact prompt. Player on foot at the first stall, facing
-    // north-east so the second and third stalls read down the street to
-    // the right, taxi parked on the same street, mission m0 active (the
-    // cafe beacon sits down the road to the east). Shoppers crowd the
-    // stalls so the market feels alive.
+    // The map + phone menu screen (Tab), like the reference: the full
+    // city map on the left with the mission route, the HP menu on the
+    // right with the current job card. Night (21:17) at the Pasar Malam
+    // market: the player is at the first stall, mission m0 active
+    // (job card "Paket Pertama", $150 reward, countdown running), $150
+    // in pocket, pistol with 24 rounds, 2 stars on the HUD. The boot
+    // code opens the map screen from G.shotScreen; the 3D scene behind
+    // the overlay is the market street, so the map marker sits where
+    // the player actually stands.
     G.clock = 797;
-    const car = G.vehicles.list.find((c) => c.type === 'taxi' && !c.driver);
-    car.x = 136; car.z = 112; car.heading = -Math.PI / 2;
     G.player.x = STALLS[0].x; G.player.z = STALLS[0].z + 4;
-    G.player.heading = -Math.PI / 3; // facing east-north-east, down the
-    // market row: stalls 2 and 3 and the gold cafe beacon read across
-    // the frame to the right, instead of sitting behind the minimap
+    G.player.heading = -Math.PI / 3;
     G.player.onFoot = true;
     G.player.car = null;
-    G.cameraRig.snapTo(-Math.PI / 3);
-    // shoppers at ALL THREE stalls plus two in the FOREGROUND, one at
-    // each lower corner of the frame (was 4 shoppers at one stall):
-    // the market reads busy, and the bottom half of the frame is people
-    // and street, not empty pavement. Foreground spots are beside the
-    // camera-player axis, not behind the camera: south of the player is
-    // behind the camera from this angle, so the first attempt at (92,134)
-    // never rendered. All face south, toward the camera.
-    G.peds.list.slice(0, 8).forEach((ped, i) => {
-      const spots = [
-        [100, 128], [112, 130], // stall 1 (Sate Madura)
-        [124, 128], [136, 130], // stall 2 (Es Kelapa)
-        [156, 128], [168, 130], // stall 3 (Gorengan)
-        [93, 125], [99, 132], // foreground, lower-left / lower-right
-      ];
-      ped.x = spots[i][0]; ped.z = spots[i][1];
-      ped.heading = Math.PI;
-    });
-    // traffic on the market street, so the road to the right is busy
-    // too (the taxi is already parked at 136,112)
-    const traffic = G.vehicles.list.filter((c) => c.driver === 'traffic');
-    const trafficSpots = [
-      { x: 180, z: 116, heading: -Math.PI / 2 }, // eastbound
-      { x: 204, z: 124, heading: Math.PI / 2 }, // westbound
-    ];
-    traffic.slice(0, 2).forEach((c, i) => {
-      c.x = trafficSpots[i].x; c.z = trafficSpots[i].z; c.heading = trafficSpots[i].heading; c.speed = 10;
-    });
     G.player.money = 150;
     G.player.hasPistol = true;
     G.player.ammo = 24;
@@ -175,6 +172,7 @@ export function stageShot(G, name) {
     G.wanted.addHeat(30); // 2 stars on the HUD
     const def = G.missions.defs.find((m) => m.id === 'm0');
     G.missions.start(def);
+    G.shotScreen = 'map';
     G.shotCamera = null;
     return;
   }

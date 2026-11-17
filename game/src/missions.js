@@ -16,6 +16,16 @@ export function nextMissionId(done) {
   return null;
 }
 
+// Status of one mission for the phone menu: done (finished), active (the
+// running one), next (the one Enter would start), locked (later in the
+// arc). Pure, so the unit suite can cover the HP mission list.
+export function missionStatus(done, activeId, id) {
+  if (done.includes(id)) return 'done';
+  if (id === activeId) return 'active';
+  if (id === nextMissionId(done)) return 'next';
+  return 'locked';
+}
+
 export class MissionRunner {
   constructor() {
     this.active = null; // { def, stepIndex, timeLeft, ramHits, escapeTimer, stealDone }

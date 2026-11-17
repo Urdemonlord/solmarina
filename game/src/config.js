@@ -98,12 +98,17 @@ export const STALLS = [
   { name: 'Gorengan Bu Tini', item: 'Gorengan campur', price: 5, heal: 10, x: 160, z: 124, flavor: 'Gorengan tinggal piringnya. Datang pagi-pagi.' },
 ];
 
-// Phone contacts for the map screen.
+// Phone contacts for the map screen (avatar colour drives the HP menu).
 export const CONTACTS = [
-  { name: 'Marlo', role: 'Bos - yang kasih misi', detail: 'Jangan bikin ribut di Pasar Malam.' },
-  { name: 'Sari', role: 'Montir bengkel', detail: 'Mobil rusak? Bawa ke bengkel, jangan ke laut.' },
-  { name: 'Dimas', role: 'Informan pelabuhan', detail: 'Polisi patroli jam 8 malam. Hati-hati.' },
+  { name: 'Marlo', role: 'Bos - yang kasih misi', detail: 'Jangan bikin ribut di Pasar Malam.', color: '#e07856' },
+  { name: 'Sari', role: 'Montir bengkel', detail: 'Mobil rusak? Bawa ke bengkel, jangan ke laut.', color: '#5f9e8f' },
+  { name: 'Dimas', role: 'Informan pelabuhan', detail: 'Polisi patroli jam 8 malam. Hati-hati.', color: '#8a9bb0' },
 ];
+
+// Phone menu tabs (HP Raka), in order: Peta shows the current job card
+// + mission progress, Misi lists the whole arc, Kontak the contacts,
+// Stats the numbers. The reference phone (Mare Alta) has the same four.
+export const PHONE_TABS = ['peta', 'misi', 'kontak', 'stats'];
 
 // Mission arc: same story as the 2D game, re-staged in 3D coordinates.
 // x east, z south; the city centre is (0, 0).

@@ -56,20 +56,38 @@
   .controls-table table { border-collapse: collapse; font-size: 13px; color: #ddd; }
   .controls-table td { padding: 2px 18px 2px 0; text-align: left; white-space: nowrap; }
   .controls-table td kbd { display: inline-block; min-width: 52px; padding: 1px 6px; margin-right: 6px; background: #2e323a; border: 1px solid #555; border-radius: 4px; color: #ffd23e; font-weight: 700; text-align: center; }
-  /* Full map screen (Tab): map left, phone panel right */
+  /* Full map screen (Tab): map left, phone menu right. The phone is a
+     real menu, like the reference: status bar, tabs that switch panes
+     (Peta = current job + progress, Misi = the whole arc, Kontak =
+     contacts with avatars, Stats = numbers), buttons at the bottom. */
   #screen-map { display: none; background: rgba(10, 12, 16, 0.88); flex-direction: row; gap: 20px; padding: 20px; }
   #map-canvas { border: 3px solid #ffd23e; border-radius: 8px; background: #e8dcc0; flex: none; }
-  #phone-panel { width: 320px; flex: none; text-align: left; background: rgba(18, 20, 26, 0.95); border: 2px solid #3a3f47; border-radius: 10px; padding: 16px; color: #f2f2f2; overflow-y: auto; max-height: 640px; }
+  #phone-panel { width: 320px; flex: none; text-align: left; background: #10131a; border: 2px solid #3a3f47; border-radius: 22px; padding: 12px 16px 16px 16px; color: #f2f2f2; overflow-y: auto; max-height: 640px; box-shadow: 0 0 0 3px #05070a, 0 10px 30px rgba(0,0,0,0.6); }
   #phone-panel h3 { margin: 0 0 4px 0; font-size: 13px; letter-spacing: 3px; color: #ffd23e; }
+  #phone-status { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: #bbb; padding: 2px 4px 8px 4px; border-bottom: 1px solid #3a3f47; margin-bottom: 10px; }
+  #phone-status b { color: #58d96b; }
   .phone-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
-  .phone-tabs .tab { flex: 1; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 1px; padding: 6px 0; border-radius: 5px; background: #2e323a; color: #bbb; }
+  .phone-tabs .tab { flex: 1; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 1px; padding: 6px 0; border-radius: 5px; border: none; font-family: inherit; cursor: pointer; background: #2e323a; color: #bbb; }
+  .phone-tabs .tab:hover { background: #3a3f47; color: #fff; }
   .phone-tabs .tab.active { background: #e07856; color: #fff; }
+  .phone-pane { display: none; }
+  .phone-pane.active { display: block; }
+  .phone-job-card { display: flex; gap: 10px; align-items: flex-start; background: #1c2029; border: 1px solid #3a3f47; border-left: 4px solid #ffd23e; border-radius: 8px; padding: 10px; }
+  .phone-job-card .avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: #fff; }
+  .phone-job-eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: #58d96b; }
+  #phone-progress .prog, #phone-missions .mrow { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.45; padding: 7px 0; border-top: 1px solid #3a3f47; }
+  #phone-progress .prog b, #phone-missions .mrow b { color: #ffd23e; }
+  #phone-progress .prog .st-done { color: #58d96b; font-weight: 700; }
+  #phone-progress .prog .st-active { color: #ffd23e; font-weight: 700; }
+  #phone-progress .prog .st-next { color: #e8e8e8; font-weight: 700; }
+  #phone-progress .prog .st-locked { color: #888; }
+  #phone-missions .mrow .mdesc { font-size: 12px; color: #bbb; }
   #phone-contacts .contact { display: flex; gap: 10px; align-items: flex-start; }
   #phone-contacts .avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; color: #fff; }
-  .phone-job-title { font-size: 18px; font-weight: 800; color: #ffd23e; margin: 8px 0 4px 0; }
+  .phone-job-title { font-size: 18px; font-weight: 800; color: #ffd23e; margin: 2px 0 4px 0; }
   .phone-job-desc { font-size: 14px; line-height: 1.5; color: #e8e8e8; }
   .phone-job-time { font-size: 13px; color: #58d96b; margin-top: 6px; }
-  #phone-contacts div { font-size: 13px; line-height: 1.45; padding: 6px 0; border-top: 1px solid #3a3f47; }
+  #phone-contacts .contact { font-size: 13px; line-height: 1.45; padding: 6px 0; border-top: 1px solid #3a3f47; }
   #phone-contacts b { color: #ffd23e; }
   #phone-stats div { font-size: 14px; line-height: 1.7; }
   #phone-panel .btn-row { margin-top: 14px; }
@@ -114,6 +132,7 @@
       <tr><td><kbd>E</kbd>masuk mobil / beli</td><td><kbd>F</kbd>pukul</td></tr>
       <tr><td><kbd>Enter</kbd>mulai misi</td><td><kbd>Tab</kbd>peta &amp; HP</td></tr>
       <tr><td><kbd>P</kbd>jeda</td><td><kbd>M</kbd>bisu</td></tr>
+      <tr><td><kbd>1-4</kbd>ganti tab HP</td><td><kbd>Esc</kbd>tutup peta</td></tr>
     </table>
   </div>
   <div class="start">Tekan Enter atau klik untuk mulai</div>
@@ -131,20 +150,30 @@
 <div id="screen-map" class="screen">
   <canvas id="map-canvas" width="600" height="600"></canvas>
   <div id="phone-panel">
-    <h3>SOLMARINA &middot; HP RAKA</h3>
-    <div class="phone-tabs"><span class="tab">MAPA</span><span class="tab active">MISI</span><span class="tab">KONTAK</span><span class="tab">STATS</span></div>
-    <div id="phone-job"></div>
-    <h3 style="margin-top:14px">KONTAK</h3>
-    <div id="phone-contacts">
-      <div class="contact"><span class="avatar" style="background:#e07856">M</span><span><b>Marlo</b> &mdash; Bos, yang kasih misi<br>Jangan bikin ribut di Pasar Malam.</span></div>
-      <div class="contact"><span class="avatar" style="background:#5f9e8f">S</span><span><b>Sari</b> &mdash; Montir bengkel<br>Mobil rusak? Bawa ke bengkel, jangan ke laut.</span></div>
-      <div class="contact"><span class="avatar" style="background:#8a9bb0">D</span><span><b>Dimas</b> &mdash; Informan pelabuhan<br>Polisi patroli jam 8 malam. Hati-hati.</span></div>
+    <div id="phone-status"><span>SOLMARINA NET <b>5G</b></span><span id="phone-clock">08:00</span></div>
+    <h3>HP RAKA</h3>
+    <div class="phone-tabs"><button class="tab active" data-tab="peta">PETA</button><button class="tab" data-tab="misi">MISI</button><button class="tab" data-tab="kontak">KONTAK</button><button class="tab" data-tab="stats">STATS</button></div>
+    <div id="pane-peta" class="phone-pane active">
+      <div id="phone-job"></div>
+      <h3 style="margin-top:14px">PROGRES MISI</h3>
+      <div id="phone-progress"></div>
     </div>
-    <h3 style="margin-top:14px">STATISTIK</h3>
-    <div id="phone-stats"></div>
+    <div id="pane-misi" class="phone-pane">
+      <h3>DAFTAR MISI</h3>
+      <div id="phone-missions"></div>
+    </div>
+    <div id="pane-kontak" class="phone-pane">
+      <h3>KONTAK</h3>
+      <div id="phone-contacts"></div>
+    </div>
+    <div id="pane-stats" class="phone-pane">
+      <h3>STATISTIK</h3>
+      <div id="phone-stats"></div>
+    </div>
     <div class="btn-row">
       <button id="map-close" class="menu-btn">KEMBALI (Tab)</button>
       <button id="map-save" class="menu-btn secondary">SIMPAN</button>
+      <button id="map-menu" class="menu-btn ghost">MENU AWAL</button>
     </div>
   </div>
 </div>

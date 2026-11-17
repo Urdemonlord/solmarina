@@ -731,6 +731,11 @@ window.addEventListener('keydown', (e) => {
     else if (G.screen === 'map') closeMap();
     return;
   }
+  // Phone menu tabs: 1-4 switch panes while the map screen is open.
+  if (G.screen === 'map' && /^Digit[1-4]$/.test(e.code)) {
+    hud.showPhoneTab(['peta', 'misi', 'kontak', 'stats'][Number(e.code.slice(5)) - 1]);
+    return;
+  }
   if (e.code === 'Escape' && G.screen === 'map') { closeMap(); return; }
   if (e.code === 'Enter') {
     // Only the global handler acts on title/busted/wasted; during play the
@@ -787,22 +792,33 @@ document.getElementById('map-save').addEventListener('click', (e) => {
   e.target.textContent = 'TERSIMPAN!';
   setTimeout(() => { e.target.textContent = 'SIMPAN'; }, 1200);
 });
+document.getElementById('map-menu').addEventListener('click', () => {
+  if (G.screen === 'map') { hud.hideMap(); showTitle(); }
+});
 
 // ---------- boot ----------
 showTitle();
 hud.update(G, 0); // draw the minimap once so the title screen shows it
 if (SHOT) {
   stageShot(G, SHOT);
-  G.screen = SHOT === '1-start' ? 'title' : 'play';
-  hud.showScreen(SHOT === '1-start' ? 'title' : 'play');
+  if (G.shotScreen === 'map') {
+    // 4-mission stages the map + phone menu screen, not gameplay:
+    // hide the title first (it is showing at boot), then open the map.
+    hud.showScreen('play');
+    openMap('play');
+  } else {
+    G.screen = SHOT === '1-start' ? 'title' : 'play';
+    hud.showScreen(G.screen);
+  }
   // staged missions need their objective banner set (startNextMission
   // normally does this; stageShot starts the mission directly)
   if (G.missions.active) {
     const step0 = G.missions.currentStep();
     hud.setObjective(G.missions.active.def.title + ': ' + (step0 ? step0.label : ''));
   }
-  // one update to settle meshes before the first staged frame
-  if (SHOT !== '1-start') update(0.016, performance.now());
+  // one update to settle meshes before the first staged frame (not for
+  // the title or the map screen: their scenes are staged, not played)
+  if (SHOT !== '1-start' && SHOT !== '4-mission') update(0.016, performance.now());
   hud.update(G, 0); // refresh clock / district / sight for the staged hour
   requestAnimationFrame(frame);
 } else {

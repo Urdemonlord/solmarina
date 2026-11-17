@@ -1,7 +1,9 @@
 // Solmarina 3D: DOM HUD + 2D minimap + menu screens (browser only).
 // The DOM lives in index.html; this wires it and draws the minimap and
 // the full map screen (Tab) with its phone/job panel.
-import { WORLD, CONTACTS, DISTRICTS, STALLS } from './config.js';
+import { WORLD, CONTACTS, DISTRICTS, STALLS, PHONE_TABS } from './config.js';
+import { MISSIONS } from './config.js';
+import { missionStatus } from './missions.js';
 import { roadLines, districtAt, routePoints, PARK_BLOCK } from './city.js';
 
 export function createHud(buildings) {
@@ -16,6 +18,13 @@ export function createHud(buildings) {
     minimapLabel: $('hud-minimap-label'),
     mapScreen: $('screen-map'), mapCanvas: $('map-canvas'),
     phoneJob: $('phone-job'), phoneStats: $('phone-stats'),
+    phoneClock: $('phone-clock'), phoneProgress: $('phone-progress'),
+    phoneMissions: $('phone-missions'), phoneContacts: $('phone-contacts'),
+    phoneTabs: Array.from(document.querySelectorAll('#phone-panel .tab')),
+    phonePanes: {
+      peta: $('pane-peta'), misi: $('pane-misi'),
+      kontak: $('pane-kontak'), stats: $('pane-stats'),
+    },
     screens: { title: $('screen-title'), paused: $('screen-paused'), busted: $('screen-busted'), wasted: $('screen-wasted') },
     titleSave: $('title-save'), titleMoney: $('title-money'),
     titleContinue: $('title-continue'),
@@ -200,18 +209,41 @@ export function createHud(buildings) {
     mapCtx.restore();
   }
 
+  // The phone is a real menu (like the reference): tabs switch panes.
+  // PETA: current job card (giver avatar + reward + countdown) + the
+  // 5-mission progress list. MISI: the whole arc with rewards. KONTAK:
+  // contacts with avatars. STATS: the numbers. All four panes are
+  // filled from live game state every time the map opens.
+  function showPhoneTab(tab) {
+    if (!PHONE_TABS.includes(tab)) tab = 'peta';
+    for (const b of el.phoneTabs) b.classList.toggle('active', b.dataset.tab === tab);
+    for (const [name, pane] of Object.entries(el.phonePanes)) {
+      if (pane) pane.classList.toggle('active', name === tab);
+    }
+  }
+  function fmtClock(minutes) {
+    const h = (Math.floor(minutes / 60) + 8) % 24;
+    const m = Math.floor(minutes % 60);
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  }
   function fillPhone(G) {
     if (!el.phoneJob) return;
-    const step = G.missions.currentStep();
+    if (el.phoneClock) el.phoneClock.textContent = fmtClock(Math.max(0, G.clock));
+    const done = G.missions.done || [];
     const active = G.missions.active;
-    const next = !active && G.missions.done ? G.missions.done.length : 0;
+    const activeId = active ? active.def.id : null;
+    const step = G.missions.currentStep();
+    // PETA pane: current job card
     let jobHtml;
     if (active) {
       const t = Math.max(0, Math.ceil(active.timeLeft));
-      jobHtml = '<div class="phone-job-title">' + active.def.title + ' &mdash; $' + active.def.reward + '</div>'
+      jobHtml = '<div class="phone-job-card"><span class="avatar" style="background:'
+        + CONTACTS[0].color + '">M</span><span><span class="phone-job-eyebrow">MISI AKTIF &middot; MARLO</span>'
+        + '<div class="phone-job-title">' + active.def.title + ' &mdash; $' + active.def.reward + '</div>'
         + '<div class="phone-job-desc">' + (step ? step.label : '') + '</div>'
-        + '<div class="phone-job-time">Sisa waktu ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') + '</div>';
-    } else if (next < 5) {
+        + '<div class="phone-job-time">Sisa waktu ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') + '</div>'
+        + '</span></div>';
+    } else if (done.length < MISSIONS.length) {
       jobHtml = '<div class="phone-job-title">Belum ada misi aktif</div>'
         + '<div class="phone-job-desc">Tekan Enter untuk mulai misi berikutnya.</div>';
     } else {
@@ -219,16 +251,49 @@ export function createHud(buildings) {
         + '<div class="phone-job-desc">Kota ini milikmu, Raka. Jelajahi sesukamu.</div>';
     }
     el.phoneJob.innerHTML = jobHtml;
+    // PETA pane: mission progress (5 rows, status per mission)
+    const statusLabel = { done: '✓ SELESAI', active: '▶ AKTIF', next: 'BERIKUTNYA', locked: 'TERKUNCI' };
+    if (el.phoneProgress) {
+      el.phoneProgress.innerHTML = MISSIONS.map((m, i) => {
+        const st = missionStatus(done, activeId, m.id);
+        return '<div class="prog"><span><b>' + (i + 1) + '.</b> ' + m.title + '</span>'
+          + '<span class="st-' + st + '">' + statusLabel[st] + '</span></div>';
+      }).join('');
+    }
+    // MISI pane: the whole arc with reward + first step
+    if (el.phoneMissions) {
+      el.phoneMissions.innerHTML = MISSIONS.map((m, i) => {
+        const st = missionStatus(done, activeId, m.id);
+        return '<div class="mrow"><span><b>' + (i + 1) + '.</b> ' + m.title
+          + '<br><span class="mdesc">' + m.steps[0].label + '</span></span>'
+          + '<span>$' + m.reward + '<br><span class="st-' + st + '">' + statusLabel[st] + '</span></span></div>';
+      }).join('');
+    }
+    // KONTAK pane: contacts with avatars, from config
+    if (el.phoneContacts) {
+      el.phoneContacts.innerHTML = CONTACTS.map((c) => {
+        return '<div class="contact"><span class="avatar" style="background:' + c.color + '">'
+          + c.name[0] + '</span><span><b>' + c.name + '</b> &mdash; ' + c.role
+          + '<br>' + c.detail + '</span></div>';
+      }).join('');
+    }
+    // STATS pane
     const stars = '★'.repeat(G.wanted.stars) + '☆'.repeat(5 - G.wanted.stars);
     el.phoneStats.innerHTML = '<div>Uang: <b>$' + G.player.money + '</b></div>'
-      + '<div>Misi selesai: <b>' + G.missions.done.length + ' / 5</b></div>'
+      + '<div>Misi selesai: <b>' + done.length + ' / ' + MISSIONS.length + '</b></div>'
       + '<div>Wanted: <b>' + stars + '</b></div>'
       + '<div>Nyawa: <b>' + Math.max(0, Math.round(G.player.health)) + '</b></div>'
       + '<div>Senjata: <b>' + (G.player.hasPistol ? 'Pistol (' + G.player.ammo + ' peluru)' : 'Tangan kosong') + '</b></div>'
-      + '<div>Kontak: <b>' + CONTACTS.map((c) => c.name).join(', ') + '</b></div>';
+      + '<div>Waktu: <b>' + fmtClock(Math.max(0, G.clock)) + '</b></div>';
+  }
+
+  // Tab clicks: the phone menu is navigable by mouse as well as keys.
+  for (const b of Array.from(document.querySelectorAll('#phone-panel .tab'))) {
+    b.addEventListener('click', () => showPhoneTab(b.dataset.tab));
   }
 
   return {
+    showPhoneTab,
     flash() { flashUntil = performance.now() + 180; },
     setObjective(text) {
       el.objective.textContent = text;
@@ -244,6 +309,7 @@ export function createHud(buildings) {
       document.body.classList.add('hide-hud'); // the map has its own panel
       drawMap(G);
       fillPhone(G);
+      showPhoneTab('peta'); // the phone always opens on the job card
     },
     hideMap() { if (el.mapScreen) el.mapScreen.style.display = 'none'; document.body.classList.remove('hide-hud'); },
     showScreen(name, saveInfo) {
