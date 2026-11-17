@@ -39,6 +39,10 @@ export const WANTED = {
   starAt: [12, 30, 55, 75, 90],
   decayDelay: 8,
   decayRate: 2.5, // heat per second while hidden
+  // Once no police unit has had line of sight for hiddenBoostAfter seconds,
+  // the player is properly losing the tail: heat drains much faster.
+  hiddenDecayRate: 8,
+  hiddenBoostAfter: 3,
   crimeHeat: {
     stealCar: 14,
     carjack: 20,
@@ -61,6 +65,45 @@ export const POLICE = {
   bustTime: 1.2,
   fine: 100,
 };
+
+// Police helicopter: joins the chase at 3+ stars. It keeps line of sight
+// from the air unless the player breaks it by hugging a building (cover)
+// or outrunning its watch radius.
+export const HELI = {
+  minStars: 3,
+  watchRadius: 55, // horizontal distance inside which it can see the player
+  followSpeed: 22, // units/s: slower than a sports car, faster than on foot
+  hoverHeight: 20,
+  orbitRadius: 26,
+};
+
+// Named districts of Solmarina (rect centres + sizes, for the HUD label and
+// the full map screen). x east, z south; the beach is the southern strip.
+export const DISTRICTS = [
+  { name: 'Bukit Warna', x: -230, z: -230, w: 150, h: 150 },
+  { name: 'Kota Tua', x: -195, z: 30, w: 150, h: 190 },
+  { name: 'Pusat Kota', x: -10, z: -60, w: 220, h: 200 },
+  { name: 'Pelabuhan', x: 205, z: -195, w: 150, h: 150 },
+  { name: 'Taman Kota', x: -80, z: 160, w: 130, h: 110 },
+  { name: 'Pasar Malam', x: 150, z: 120, w: 180, h: 170 },
+  { name: 'Marina', x: -205, z: 245, w: 150, h: 110 },
+  { name: 'Pantai Ombak', x: 0, z: 325, w: 560, h: 100 },
+];
+
+// Night-market stalls (Pasar Malam). Buying heals; each stall also has a
+// flavour line when the player is broke.
+export const STALLS = [
+  { name: 'Warung Sate Madura', item: 'Sate ayam + lontong', price: 10, heal: 25, x: 96, z: 124, flavor: 'Sate habis, tinggal tusuknya. Besok lagi ya.' },
+  { name: 'Es Kelapa Muda', item: 'Es kelapa muda', price: 8, heal: 15, x: 128, z: 124, flavor: 'Kelapa habis, es batunya masih.' },
+  { name: 'Gorengan Bu Tini', item: 'Gorengan campur', price: 5, heal: 10, x: 160, z: 124, flavor: 'Gorengan tinggal piringnya. Datang pagi-pagi.' },
+];
+
+// Phone contacts for the map screen.
+export const CONTACTS = [
+  { name: 'Marlo', role: 'Bos - yang kasih misi', detail: 'Jangan bikin ribut di Pasar Malam.' },
+  { name: 'Sari', role: 'Montir bengkel', detail: 'Mobil rusak? Bawa ke bengkel, jangan ke laut.' },
+  { name: 'Dimas', role: 'Informan pelabuhan', detail: 'Polisi patroli jam 8 malam. Hati-hati.' },
+];
 
 // Mission arc: same story as the 2D game, re-staged in 3D coordinates.
 // x east, z south; the city centre is (0, 0).

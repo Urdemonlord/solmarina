@@ -2,24 +2,25 @@
 // Original open-world crime game: city Solmarina, protagonist Raka.
 // Third-person on foot and by car, traffic, pedestrians, wanted + police,
 // 5 missions, combat, HUD + minimap, save. Three.js (vendored) + DOM HUD.
-import { WORLD, PLAYER, CAR, WANTED, MISSIONS, SPAWNS, LIMITS } from './config.js';
+import { WORLD, PLAYER, CAR, WANTED, MISSIONS, SPAWNS, LIMITS, STALLS } from './config.js';
 import { mulberry32, clamp, turnToward, dist2 } from './random.js';
+import { hourFromClock } from './daynight.js';
 import { Wanted } from './wanted.js';
 import { MissionRunner, nextMissionId, missionById } from './missions.js';
-import { collideBuildings, blockLoop } from './city.js';
+import { collideBuildings, blockLoop, routePoints } from './city.js';
 import { createCar, updateCar, collideCars } from './vehicles.js';
 import { createPlayer, updatePlayerOnFoot, syncPlayerMesh } from './player.js';
 import { createTraffic, updateTraffic } from './traffic.js';
 import { createPeds, updatePeds, syncPedMesh } from './pedestrians.js';
 import {
-  createPolice, balanceUnits, updatePolice, policeCanSee, applyBusted, applyWasted,
+  createPolice, createHeli, updateHeli, balanceUnits, updatePolice, policeCanSee, applyBusted, applyWasted,
 } from './police.js';
 import { punch, shoot, policeFire } from './combat.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import {
-  initRenderer, buildEnvironment, makeCarMesh, makeHumanMesh, makeBeaconMesh,
-  makePickupMesh, createCameraRig,
+  initRenderer, buildEnvironment, createDayNight, makeCarMesh, makeHumanMesh, makeBeaconMesh,
+  makePickupMesh, makeHeliMesh, createCameraRig,
 } from './render.js';
 import { createEffects } from './effects.js';
 import { createHud } from './hud.js';
@@ -31,8 +32,9 @@ const SEED = Number(params.get('seed') || 1);
 const SHOT = params.get('shot') || null;
 
 const canvas = document.getElementById('game');
-const { renderer, scene, camera, sun } = initRenderer(canvas);
+const { renderer, scene, camera, sun, hemi } = initRenderer(canvas);
 const env = buildEnvironment(scene, SEED);
+const dayNight = createDayNight(scene, sun, hemi, env);
 const buildings = env.buildings;
 const input = createInput();
 const audio = createAudio();
@@ -51,6 +53,10 @@ const G = {
   wanted: new Wanted(),
   missions: new MissionRunner(),
   police: createPolice(),
+  heli: createHeli(),
+  isNight: false,
+  mapReturn: 'play',
+  routeTimer: 0,
   player: createPlayer(SPAWNS.player.x, SPAWNS.player.z, SPAWNS.player.heading),
   vehicles: { list: [] },
   peds: { list: [] },
@@ -85,6 +91,12 @@ function syncCarMesh(car) {
   if (mesh.userData.lightBar) {
     mesh.userData.lightBar.visible = car.driver === 'police';
   }
+  // headlights at night: the player's car and police cars light the road
+  if (mesh.userData.headlight) {
+    mesh.userData.headlight.intensity = G.isNight
+      ? (car.driver === 'player' ? 90 : car.driver === 'police' ? 50 : 0)
+      : 0;
+  }
 }
 
 const playerMesh = makeHumanMesh(0xf2f2f2, 0x2e4a6a, 0xd9a066);
@@ -105,13 +117,52 @@ function meshForPed(ped) {
 const beacon = makeBeaconMesh();
 beacon.visible = false;
 scene.add(beacon);
-const arrow = new THREE.Mesh(
-  new THREE.ConeGeometry(0.35, 1.0, 8),
-  new THREE.MeshBasicMaterial({ color: 0xffd23e }),
-);
-arrow.rotation.x = Math.PI / 2;
+// direction arrow: a big floating chevron (cone + shaft) that points at
+// the objective, plus a dashed route line along the road grid
+const arrow = new THREE.Group();
+{
+  const shaft = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.16, 1.6, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+  );
+  shaft.rotation.x = Math.PI / 2;
+  shaft.position.z = 0.9;
+  const head = new THREE.Mesh(
+    new THREE.ConeGeometry(0.55, 1.5, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+  );
+  head.rotation.x = -Math.PI / 2; // cone tip toward -z (the facing direction)
+  head.position.z = -0.6;
+  arrow.add(shaft, head);
+}
 arrow.visible = false;
 scene.add(arrow);
+const ROUTE_MAX = 10;
+const routeGeo = new THREE.BufferGeometry();
+routeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ROUTE_MAX * 3), 3));
+const routeLine = new THREE.Line(routeGeo, new THREE.LineDashedMaterial({ color: 0xffd23e, dashSize: 2.5, gapSize: 1.8 }));
+routeLine.visible = false;
+routeLine.frustumCulled = false;
+scene.add(routeLine);
+function updateRouteLine(from, to) {
+  const pts = routePoints(from, to);
+  const pos = routeGeo.attributes.position.array;
+  const n = Math.min(pts.length, ROUTE_MAX);
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = pts[i].x;
+    pos[i * 3 + 1] = 0.35;
+    pos[i * 3 + 2] = pts[i].z;
+  }
+  routeGeo.setDrawRange(0, n);
+  routeGeo.attributes.position.needsUpdate = true;
+  routeLine.computeLineDistances();
+  routeLine.visible = n >= 2;
+}
+// police helicopter mesh (one, reused)
+const heliMesh = makeHeliMesh();
+heliMesh.visible = false;
+scene.add(heliMesh);
+G.heliMesh = heliMesh;
 const pickup = makePickupMesh();
 pickup.position.set(SPAWNS.pistolPickup.x, 1.2, SPAWNS.pistolPickup.z);
 scene.add(pickup);
@@ -144,6 +195,15 @@ function nearestCar(maxDist) {
     if (car.destroyed) continue;
     const d2 = dist2(car.x, car.z, G.player.x, G.player.z);
     if (d2 < bestD) { best = car; bestD = d2; }
+  }
+  return best;
+}
+
+function nearestStall(maxDist) {
+  let best = null, bestD = maxDist * maxDist;
+  for (const s of STALLS) {
+    const d2 = dist2(s.x, s.z, G.player.x, G.player.z);
+    if (d2 < bestD) { best = s; bestD = d2; }
   }
   return best;
 }
@@ -240,6 +300,7 @@ G.missions.done = [];
 // ---------- screens ----------
 function showTitle() {
   G.screen = 'title';
+  hud.hideMap();
   const s = readSave(window.localStorage);
   G.save.exists = !!s;
   hud.showScreen('title', s);
@@ -270,14 +331,29 @@ function frame(now) {
   let dt = Math.max(0, Math.min(0.05, (now - lastT) / 1000));
   lastT = now;
   dt *= effects.timeScale(now);
+  // day/night follows the game clock on every screen (menus included, so
+  // the title can sit at golden hour)
+  const tod = dayNight.apply(hourFromClock(G.clock));
+  G.isNight = tod.night;
   if (G.screen === 'play') update(dt, now);
-  else if (G.screen === 'title' || G.screen === 'paused' || G.screen === 'busted' || G.screen === 'wasted') {
-    // idle animation on menus: slow camera orbit around the player
-    cameraRig.update(dt, { x: G.player.x, z: G.player.z }, G.player.heading + now / 9000, false, 0);
+  else if (G.screen === 'title' || G.screen === 'paused' || G.screen === 'busted' || G.screen === 'wasted' || G.screen === 'map') {
+    // staged shot camera wins on menu screens; otherwise a high slow orbit
+    // so the city fills the frame behind the menus
+    if (SHOT && G.shotCamera) {
+      camera.position.set(G.shotCamera.pos.x, G.shotCamera.pos.y, G.shotCamera.pos.z);
+      camera.lookAt(G.shotCamera.look.x, G.shotCamera.look.y, G.shotCamera.look.z);
+    } else {
+      cameraRig.updateMenu(dt, { x: G.player.x, z: G.player.z }, now);
+    }
   }
-  // sun follows the player so shadows stay local
-  sun.position.set(G.player.x + 80, 120, G.player.z + 60);
+  // sun follows the player so shadows stay local; its height/angle follow
+  // the time of day (low and warm at golden hour)
+  sun.position.set(G.player.x + dayNight.sunOffset.x, dayNight.sunOffset.y, G.player.z + dayNight.sunOffset.z);
   sun.target.position.set(G.player.x, 0, G.player.z);
+  // the golden-hour sun sits dead-centre behind the title text from the
+  // title camera, where the dark overlay turns it into a brown smudge:
+  // hide it on the title screen, show it everywhere else
+  env.sunDisc.visible = G.screen !== 'title';
   renderer.render(scene, camera);
   if (SHOT) {
     shotFrames++;
@@ -290,7 +366,7 @@ function frame(now) {
 }
 
 function update(dt, now) {
-  G.clock += dt * 0.1; // 1 game minute per 10 real seconds
+  G.clock += dt * 0.25; // 1 game minute per 4 real seconds: a day in ~96 min
   const p = G.player;
 
   // --- input: one-shot keys ---
@@ -300,12 +376,25 @@ function update(dt, now) {
   }
   if (input.consume('KeyE')) {
     if (p.onFoot) {
-      const car = nearestCar(4.5);
-      if (car) {
-        if (car.driver === 'traffic' || car.driver === 'target') {
-          G.wanted.addHeat(WANTED.crimeHeat.carjack);
+      // market stall first: buying beats stealing a car next to a stall
+      const stall = nearestStall(4.5);
+      if (stall) {
+        if (G.player.money >= stall.price) {
+          G.player.money -= stall.price;
+          G.player.health = Math.min(100, G.player.health + stall.heal);
+          audio.pickup();
+          hud.setPrompt(stall.item + ' dibeli! Nyawa +' + stall.heal + ' (sisa $' + G.player.money + ')');
+        } else {
+          hud.setPrompt(stall.name + ': ' + stall.flavor);
         }
-        G.enterCar(car, false);
+      } else {
+        const car = nearestCar(4.5);
+        if (car) {
+          if (car.driver === 'traffic' || car.driver === 'target') {
+            G.wanted.addHeat(WANTED.crimeHeat.carjack);
+          }
+          G.enterCar(car, false);
+        }
       }
     } else {
       exitCar();
@@ -442,10 +531,11 @@ function update(dt, now) {
     if (ped.down > 0) ped.down -= dt;
   }
 
-  // --- wanted + police ---
-  const seen = policeCanSee(G.police, p);
+  // --- wanted + police + helicopter ---
+  const seen = policeCanSee(G.police, p, G.heli, buildings);
   G.wanted.update(dt, seen);
   balanceUnits(G.police, G.wanted.stars, p.x, p.z, rng);
+  updateHeli(G.heli, dt, p, G.wanted.stars);
   const busted = updatePolice(G.police, dt, p, G.wanted.stars);
   // police meshes: spawn on demand
   for (const u of G.police.units) {
@@ -508,7 +598,7 @@ function update(dt, now) {
     hud.setObjective('Misi gagal. Tekan Enter untuk coba lagi.');
   }
 
-  // beacon + arrow on the current objective
+  // beacon + arrow + route line on the current objective
   const target = missionTarget();
   const marker = target || (G.missions.active ? null : nextMissionStart());
   if (marker) {
@@ -517,11 +607,20 @@ function update(dt, now) {
     beacon.userData.gem.rotation.y += dt * 2;
     beacon.userData.gem.position.y = 4.5 + Math.sin(now * 0.003) * 0.4;
     arrow.visible = true;
-    arrow.position.set(p.x, 3.6, p.z);
+    arrow.position.set(p.x, 4.2 + Math.sin(now * 0.004) * 0.3, p.z);
     arrow.rotation.y = Math.atan2(-(marker.x - p.x), -(marker.z - p.z));
+    arrow.scale.setScalar(p.onFoot ? 0.5 : 1); // smaller on foot: the
+    // camera is closer, a full-size arrow would cover the stall/market
+    // dashed route along the road grid, refreshed twice a second
+    G.routeTimer -= dt;
+    if (G.routeTimer <= 0) {
+      G.routeTimer = 0.5;
+      updateRouteLine({ x: p.x, z: p.z }, marker);
+    }
   } else {
     beacon.visible = false;
     arrow.visible = false;
+    routeLine.visible = false;
   }
   pickup.rotation.y += dt * 1.5;
   pickup.position.y = 1.2 + Math.sin(now * 0.004) * 0.15;
@@ -529,6 +628,18 @@ function update(dt, now) {
   // --- sync meshes ---
   syncPlayerMesh(playerMesh, p, dt);
   for (const car of cars) syncCarMesh(car);
+  // BUG FIX (was: police cars never synced, so their meshes sat at the
+  // origin and a chase showed no police): sync every police car too.
+  for (const u of G.police.units) {
+    if (u.kind === 'car') syncCarMesh(u.car);
+  }
+  // helicopter mesh follows its state
+  heliMesh.visible = G.heli.active;
+  if (G.heli.active) {
+    heliMesh.position.set(G.heli.x, G.heli.y, G.heli.z);
+    heliMesh.userData.rotor.rotation.y += dt * 28;
+    heliMesh.rotation.y = Math.atan2(-(p.x - G.heli.x), -(p.z - G.heli.z));
+  }
   for (const ped of G.peds.list) {
     const mesh = meshForPed(ped);
     syncPedMesh(mesh, ped);
@@ -553,7 +664,10 @@ function update(dt, now) {
   hud.update(G, dt);
 
   // --- prompts ---
-  if (!G.missions.active) {
+  const stallNear = p.onFoot ? nearestStall(4.5) : null;
+  if (stallNear) {
+    hud.setPrompt('[E] ' + stallNear.name + ': ' + stallNear.item + ' $' + stallNear.price + ' (+' + stallNear.heal + ' nyawa)');
+  } else if (!G.missions.active) {
     const id = nextMissionId(G.missions.done);
     if (id) {
       const def = missionById(id);
@@ -587,7 +701,27 @@ function cameraRigYaw() {
 // ---------- menu keys (global, work on any screen) ----------
 // Pause toggling lives ONLY here (not in update): the input object's key
 // state would otherwise re-trigger a pause the frame after resuming.
+function openMap(from) {
+  G.mapReturn = from;
+  G.screen = 'map';
+  hud.showMap(G);
+}
+function closeMap() {
+  hud.hideMap();
+  G.screen = G.mapReturn === 'paused' ? 'paused' : 'play';
+  hud.showScreen(G.screen === 'paused' ? 'paused' : 'play');
+}
+G.openMap = openMap;
+G.closeMap = closeMap;
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Tab') {
+    e.preventDefault();
+    if (G.screen === 'play') openMap('play');
+    else if (G.screen === 'paused') openMap('paused');
+    else if (G.screen === 'map') closeMap();
+    return;
+  }
+  if (e.code === 'Escape' && G.screen === 'map') { closeMap(); return; }
   if (e.code === 'Enter') {
     // Only the global handler acts on title/busted/wasted; during play the
     // update loop consumes Enter to start missions, so do not clear it there.
@@ -613,6 +747,36 @@ window.addEventListener('keydown', (e) => {
 document.getElementById('screen-title').addEventListener('click', () => {
   if (G.screen === 'title') { audio.unlock(); startGame(false); }
 });
+document.getElementById('title-new').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (G.screen === 'title') { audio.unlock(); startGame(false); }
+});
+document.getElementById('title-continue').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (G.screen === 'title' && G.save.exists) { audio.unlock(); startGame(true); }
+});
+document.getElementById('pause-resume').addEventListener('click', () => {
+  if (G.screen === 'paused') { G.screen = 'play'; hud.showScreen('play'); }
+});
+document.getElementById('pause-map').addEventListener('click', () => {
+  if (G.screen === 'paused') openMap('paused');
+});
+document.getElementById('pause-save').addEventListener('click', (e) => {
+  doSave();
+  e.target.textContent = 'TERSIMPAN!';
+  setTimeout(() => { e.target.textContent = 'SIMPAN'; }, 1200);
+});
+document.getElementById('pause-menu').addEventListener('click', () => {
+  if (G.screen === 'paused') showTitle();
+});
+document.getElementById('map-close').addEventListener('click', () => {
+  if (G.screen === 'map') closeMap();
+});
+document.getElementById('map-save').addEventListener('click', (e) => {
+  doSave();
+  e.target.textContent = 'TERSIMPAN!';
+  setTimeout(() => { e.target.textContent = 'SIMPAN'; }, 1200);
+});
 
 // ---------- boot ----------
 showTitle();
@@ -621,13 +785,15 @@ if (SHOT) {
   stageShot(G, SHOT);
   G.screen = SHOT === '1-start' ? 'title' : 'play';
   hud.showScreen(SHOT === '1-start' ? 'title' : 'play');
+  // staged missions need their objective banner set (startNextMission
+  // normally does this; stageShot starts the mission directly)
+  if (G.missions.active) {
+    const step0 = G.missions.currentStep();
+    hud.setObjective(G.missions.active.def.title + ': ' + (step0 ? step0.label : ''));
+  }
   // one update to settle meshes before the first staged frame
   if (SHOT !== '1-start') update(0.016, performance.now());
-  if (SHOT === '1-start') {
-    // title camera vantage
-    camera.position.set(-40, 55, -120);
-    camera.lookAt(30, 0, 120);
-  }
+  hud.update(G, 0); // refresh clock / district / sight for the staged hour
   requestAnimationFrame(frame);
 } else {
   requestAnimationFrame(frame);

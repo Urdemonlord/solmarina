@@ -41,6 +41,26 @@ Kamera third-person di belakang, chase cam saat nyetir.
 7. HUD + minimap + save + layar title/pause
 8. Audio prosedural + partikel + shake + skid
 
+## Polish pass 2026-11-18 (Maré Alta bar)
+- Helikopter polisi di 3+ bintang + banner HUD; garis pandang: heli
+  melihat dalam radius 55 kecuali pemain menempel gedung (cover) atau
+  lari menjauh. Kalau tidak terlihat >3 detik, wanted turun cepat
+  (8/detik) dan indikator HUD berubah TERLIHAT -> SEMBUNYI.
+- Title: senja (17:21), kamera tinggi dari timur laut, Bukit Warna +
+  skyline + laut memenuhi frame; tombol BARU / LANJUTKAN + tabel kontrol.
+- Peta penuh (Tab): 8 distrik bernama, rute misi garis putus-putus,
+  penanda pemain/misi/polisi/heli, panel HP (misi, kontak, statistik).
+- Siklus siang/malam dari jam game: jendela menyala + lampu jalan di
+  malam hari; 3 warung Pasar Malam, [E] beli makan (+nyawa).
+- Minimap lingkaran + ring kuning; nama distrik di bawahnya; senjata +
+  amunisi di HUD; panah arah besar + garis rute di tanah; mobil: kaca
+  gelap + atap + bumper + hub roda + lampu depan menyala di malam hari.
+- Bug yang diperbaiki: mobil polisi tidak pernah di-sync ke mesh
+  (duduk di origin, kejar-kejaran tidak kelihatan); banner objektif dan
+  prompt tidak pernah ditampilkan (display:none); kamera shot tidak
+  pernah snap (yaw lerps, framing shot meleset); warna langit dicuci
+  karena setRGB linear vs sRGB.
+
 ## Anti-pillars
 - Bukan GTA: tidak ada nama, logo, karakter, peta atau musik Rockstar.
 - Tidak ada network: semua file lokal di game/, Three.js di-vendor.

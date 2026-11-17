@@ -1,7 +1,7 @@
 // Solmarina 3D: city layout data (pure). The renderer builds meshes from
 // this; collision and traffic read the same data. x east, z south, centre (0,0).
 // Roads run on grid lines; blocks sit between them.
-import { WORLD } from './config.js';
+import { WORLD, DISTRICTS } from './config.js';
 import { mulberry32, range, pick } from './random.js';
 
 export const BUILDING_COLORS = [
@@ -125,6 +125,32 @@ export function nearestRoadPoint(x, z) {
   // Prefer the closer axis: snap x if the vertical road is closer, else z.
   if (Math.abs(x - bx) < Math.abs(z - bz)) return { x: bx, z };
   return { x, z: bz };
+}
+
+// Named district containing (x, z), or null outside every district rect.
+export function districtAt(x, z) {
+  for (const d of DISTRICTS) {
+    if (Math.abs(x - d.x) <= d.w / 2 && Math.abs(z - d.z) <= d.h / 2) return d.name;
+  }
+  return null;
+}
+
+// Manhattan route along the road grid from `from` to `to`, for the HUD
+// arrow's ground line and the full map screen. Points are {x, z}.
+export function routePoints(from, to) {
+  const a = nearestRoadPoint(from.x, from.z);
+  const b = nearestRoadPoint(to.x, to.z);
+  const pts = [{ x: from.x, z: from.z }, a];
+  if (a.x !== b.x && a.z !== b.z) pts.push({ x: b.x, z: a.z });
+  pts.push(b);
+  pts.push({ x: to.x, z: to.z });
+  // drop consecutive duplicates
+  const out = [];
+  for (const p of pts) {
+    const last = out[out.length - 1];
+    if (!last || last.x !== p.x || last.z !== p.z) out.push(p);
+  }
+  return out;
 }
 
 // Rectangular loop around one block, for traffic cars.
