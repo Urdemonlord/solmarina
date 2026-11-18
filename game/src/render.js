@@ -836,6 +836,51 @@ export function createParticles(scene) {
   };
 }
 
+// ---------- tracer lines ----------
+// Gunfire reads as lines, not dots: a pool of 1px lines that flash
+// between shooter and target and fade fast (0.12s live). Staged shots
+// fire them with a long life instead, so the captured frame keeps them.
+export function createTracers(scene) {
+  const N = 24;
+  const lines = [];
+  for (let i = 0; i < N; i++) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const material = new THREE.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0 });
+    const line = new THREE.Line(geo, material);
+    line.frustumCulled = false;
+    line.visible = false;
+    scene.add(line);
+    lines.push({ line, life: 0, max: 1 });
+  }
+  let cursor = 0;
+  return {
+    fire(from, to, color, life) {
+      const t = lines[cursor];
+      cursor = (cursor + 1) % N;
+      const pos = t.line.geometry.attributes.position.array;
+      pos[0] = from.x; pos[1] = from.y; pos[2] = from.z;
+      pos[3] = to.x; pos[4] = to.y; pos[5] = to.z;
+      t.line.geometry.attributes.position.needsUpdate = true;
+      t.line.material.color.setHex(color || 0xffe9a0);
+      t.life = life || 0.12;
+      t.max = t.life;
+      t.line.material.opacity = 1;
+      t.line.visible = true;
+    },
+    update(dt) {
+      for (const t of lines) {
+        if (t.life > 0) {
+          t.life -= dt;
+          t.line.material.opacity = Math.max(0, t.life / t.max);
+          if (t.life <= 0) t.line.visible = false;
+        }
+      }
+    },
+    get activeCount() { return lines.filter((t) => t.life > 0).length; },
+  };
+}
+
 // ---------- skid marks ----------
 export function createSkids(scene) {
   const group = new THREE.Group();

@@ -2,11 +2,12 @@
 // Original open-world crime game: city Solmarina, protagonist Raka.
 // Third-person on foot and by car, traffic, pedestrians, wanted + police,
 // 5 missions, combat, HUD + minimap, save. Three.js (vendored) + DOM HUD.
-import { WORLD, PLAYER, CAR, WANTED, MISSIONS, SPAWNS, LIMITS, STALLS } from './config.js';
+import { WORLD, PLAYER, CAR, WANTED, GANGS, MISSIONS, SPAWNS, LIMITS, STALLS } from './config.js';
 import { mulberry32, clamp, turnToward, dist2 } from './random.js';
 import { hourFromClock } from './daynight.js';
 import { Wanted } from './wanted.js';
 import { MissionRunner, nextMissionId, missionById } from './missions.js';
+import { createGangWar, updateGangWar, canTriggerWar, crossfireLines } from './gangs.js';
 import { collideBuildings, collideStalls, blockLoop, routePoints } from './city.js';
 import { createCar, updateCar, collideCars } from './vehicles.js';
 import { createPlayer, updatePlayerOnFoot, syncPlayerMesh } from './player.js';
@@ -15,12 +16,12 @@ import { createPeds, updatePeds, syncPedMesh } from './pedestrians.js';
 import {
   createPolice, createHeli, updateHeli, balanceUnits, updatePolice, policeCanSee, applyBusted, applyWasted,
 } from './police.js';
-import { punch, shoot, policeFire } from './combat.js';
+import { punch, shootAim, policeFire } from './combat.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import {
   initRenderer, buildEnvironment, createDayNight, makeCarMesh, makeHumanMesh, makeBeaconMesh,
-  makePickupMesh, makeHeliMesh, createCameraRig,
+  makePickupMesh, makeHeliMesh, createCameraRig, createTracers,
 } from './render.js';
 import { createEffects } from './effects.js';
 import { createHud } from './hud.js';
@@ -41,6 +42,7 @@ const audio = createAudio();
 const cameraRig = createCameraRig(camera);
 const hud = createHud(buildings);
 const effects = createEffects(scene, audio, cameraRig, hud);
+const tracers = createTracers(scene);
 const rng = mulberry32(SEED * 7919 + 13);
 
 const G = {
@@ -53,6 +55,7 @@ const G = {
   wanted: new Wanted(),
   missions: new MissionRunner(),
   police: createPolice(),
+  gangs: { active: false, cooldown: 0, members: [], winner: null, endTimer: 0, time: 0 },
   heli: createHeli(),
   isNight: false,
   mapReturn: 'play',
@@ -61,11 +64,14 @@ const G = {
   vehicles: { list: [] },
   peds: { list: [] },
   cameraRig,
+  camera,
   renderer,
   scene,
   save: { exists: false },
 };
 G.missions.defs = MISSIONS;
+G.tracers = tracers;
+G.effects = effects;
 window.__solmarina = G;
 
 // ---------- meshes ----------
@@ -113,6 +119,20 @@ function meshForPed(ped) {
   }
   return pedMeshes.get(ped);
 }
+
+// Gang members get their own mesh map (same human mesh, gang colours);
+// the ref carries the war so shootAim() can mark the gang hostile.
+const gangMeshes = new Map();
+function meshForGang(member) {
+  if (!gangMeshes.has(member)) {
+    const mesh = makeHumanMesh(member.shirt, member.pants, 0xd9a066);
+    mesh.userData.ref = { kind: 'gang', member, war: G.gangs };
+    scene.add(mesh);
+    gangMeshes.set(member, mesh);
+  }
+  return gangMeshes.get(member);
+}
+G.gangMeshes = gangMeshes; // live tests stand the war down through this
 
 // mission beacon + direction arrow + pistol pickup
 const beacon = makeBeaconMesh();
@@ -406,22 +426,30 @@ function update(dt, now) {
     }
   }
   if (input.consume('KeyF') && p.onFoot) {
-    const hit = punch(p, G.peds.list, G.police.units, effects);
+    const hit = punch(p, G.peds.list, G.police.units, effects, G.gangs.active ? G.gangs : null);
     audio.punch();
     if (hit && hit.kind === 'cop') G.wanted.addHeat(WANTED.crimeHeat.hitCop);
+    else if (hit && hit.kind === 'gang') G.wanted.addHeat(WANTED.crimeHeat.shoot);
     else if (hit) G.wanted.addHeat(WANTED.crimeHeat.punch);
     cameraRig.addTrauma(0.15);
   }
   if (input.consumeClick() && p.onFoot && p.hasPistol && p.ammo > 0) {
     p.ammo--;
     audio.gunshot();
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera({ x: 0, y: 0 }, camera);
+    // horizontal aim from the gun along the camera's forward (see shootAim
+    // in combat.js: the centre ray used to dive into the ground 2.7 units
+    // past Raka, so the pistol could never hit anything further away)
+    const aim = new THREE.Vector3();
+    camera.getWorldDirection(aim);
+    aim.y = 0; aim.normalize();
+    const origin = { x: p.x, y: 1.3, z: p.z };
     const targets = [];
-    for (const [ped, mesh] of pedMeshes) targets.push({ mesh, ref: { kind: ped.cop ? 'cop' : 'ped', ped } });
-    for (const [car, mesh] of carMeshes) targets.push({ mesh, ref: { kind: 'car', car } });
-    const res = shoot(ray, targets, effects);
+    for (const [ped] of pedMeshes) targets.push({ ref: { kind: ped.cop ? 'cop' : 'ped', ped } });
+    for (const [car] of carMeshes) targets.push({ ref: { kind: 'car', car } });
+    for (const [member] of gangMeshes) targets.push({ ref: { kind: 'gang', member, war: G.gangs } });
+    const res = shootAim(origin, { x: aim.x, z: aim.z }, targets, effects);
     if (res && res.victim) G.wanted.addHeat(WANTED.crimeHeat.shoot);
+    if (res) tracers.fire(origin, res.point, 0xffd27f, 0.09);
     cameraRig.addTrauma(0.25);
   }
 
@@ -509,7 +537,7 @@ function update(dt, now) {
     }
   }
 
-  // --- cars hit pedestrians ---
+  // --- cars hit pedestrians (and gang members caught on the road) ---
   for (const car of cars) {
     if (car.destroyed || Math.abs(car.speed) < 3) continue;
     for (const ped of G.peds.list) {
@@ -525,18 +553,73 @@ function update(dt, now) {
         }
       }
     }
+    for (const m of G.gangs.members) {
+      if (m.down > 0) continue;
+      if (dist2(car.x, car.z, m.x, m.z) < 2.6 * 2.6) {
+        m.down = 8; // knocked down, not out: the war goes on
+        m.x += (m.x - car.x) * 0.4;
+        m.z += (m.z - car.z) * 0.4;
+        effects.burst(m.x, 1, m.z, 8, [1, 0.9, 0.4], 4, 3);
+        if (car.driver === 'player') {
+          G.wanted.addHeat(WANTED.crimeHeat.hitPed);
+          audio.crash(6);
+        }
+      }
+    }
   }
 
-  // --- pedestrians (flee from crimes + fast player car) ---
+  // --- pedestrians (flee from crimes + fast player car + the war) ---
   const threats = [];
   if (!p.onFoot && p.car && Math.abs(p.car.speed) > 8) {
     threats.push({ x: p.car.x, z: p.car.z, radius: 14 });
   }
   if (G.wanted.stars >= 2) threats.push({ x: p.x, z: p.z, radius: 10 });
+  if (G.gangs.active) threats.push({ x: GANGS.zone.x, z: GANGS.zone.z, radius: 45 });
   updatePeds(G.peds.list, dt, threats, buildings);
   for (const ped of G.peds.list) {
     if (ped.down > 0) ped.down -= dt;
   }
+
+  // --- gang war (Pasar Malam street) ---
+  if (canTriggerWar(G.gangs, p)) {
+    G.gangs = createGangWar(rng);
+    hud.setPrompt('PERANG GANG di Pasar Malam! Geng Ombak vs Geng Bara');
+    audio.gunshot();
+  }
+  if (G.gangs.active) {
+    const events = updateGangWar(G.gangs, dt, p, rng);
+    for (const ev of events) {
+      tracers.fire(ev.from, ev.to, ev.gang === 'ombak' ? 0x7fe3f0 : 0xffb36b);
+      effects.burst(ev.from.x, ev.from.y, ev.from.z, 4, [1, 0.9, 0.5], 3, 1);
+      if (ev.hit && ev.target === 'player') {
+        p.health = Math.max(0, p.health - ev.damage);
+        hud.flash();
+        audio.gunshot();
+        cameraRig.addTrauma(0.3);
+      } else if (ev.hit) {
+        effects.burst(ev.to.x, ev.to.y, ev.to.z, 5, [1, 0.8, 0.3], 3, 1);
+      }
+    }
+    // gunfire draws the police while the player watches from the zone
+    if (p.onFoot && dist2(p.x, p.z, GANGS.zone.x, GANGS.zone.z) < GANGS.zone.radius * GANGS.zone.radius) {
+      G.wanted.addHeat(GANGS.heatPerSecond * dt);
+    }
+    if (!G.gangs.active) {
+      const w = G.gangs.winner;
+      hud.setPrompt(w ? (w === 'ombak' ? 'Geng Ombak' : 'Geng Bara') + ' menang. Pasar Malam tenang lagi.' : 'Perang gang selesai.');
+      G.gangs.endTimer = 8;
+    }
+  } else if (G.gangs.members.length) {
+    G.gangs.endTimer -= dt;
+    if (G.gangs.endTimer <= 0) {
+      for (const [member, mesh] of gangMeshes) {
+        scene.remove(mesh);
+        gangMeshes.delete(member);
+      }
+      G.gangs.members = [];
+    }
+  }
+  if (G.gangs.cooldown > 0) G.gangs.cooldown -= dt;
 
   // --- wanted + police + helicopter ---
   const seen = policeCanSee(G.police, p, G.heli, buildings);
@@ -549,9 +632,10 @@ function update(dt, now) {
     if (u.kind === 'car') meshForCar(u.car);
     else meshForPed(u.ped);
   }
-  // police return fire
+  // police return fire: tracers make the bullets visible, like the gangs'
   const shots = policeFire(dt, G.police.units, p, G.wanted.stars, rng);
   for (const s of shots) {
+    tracers.fire(s.from, s.to, 0xffe9a0);
     effects.burst((s.from.x + s.to.x) / 2, 1.3, (s.from.z + s.to.z) / 2, 3, [1, 0.9, 0.5], 2, 1);
     if (s.hit) {
       p.health = Math.max(0, p.health - s.damage);
@@ -664,13 +748,29 @@ function update(dt, now) {
       else mesh.rotation.x = 0;
     }
   }
+  // gang members: same human mesh, gang colours; down = lying down
+  for (const m of G.gangs.members) {
+    const mesh = meshForGang(m);
+    syncPedMesh(mesh, m);
+    if (m.down > 0) mesh.rotation.x = Math.PI / 2 * 0.9;
+    else mesh.rotation.x = 0;
+  }
 
   // --- camera, audio, hud ---
   const heading = p.onFoot ? G.camYaw : p.heading;
-  cameraRig.update(dt, { x: p.x, z: p.z }, heading, !p.onFoot, drag.dx);
+  // a staged shot camera wins over the follow rig in shot mode (the gang
+  // war shot needs a composed angle the rig cannot frame: both gangs
+  // across the street at once, with the player between them)
+  if (SHOT && G.shotCamera) {
+    camera.position.set(G.shotCamera.pos.x, G.shotCamera.pos.y, G.shotCamera.pos.z);
+    camera.lookAt(G.shotCamera.look.x, G.shotCamera.look.y, G.shotCamera.look.z);
+  } else {
+    cameraRig.update(dt, { x: p.x, z: p.z }, heading, !p.onFoot, drag.dx);
+  }
   audio.engine(p.car ? p.car.speed : null);
   audio.siren(dt, G.police.units.length > 0 && dist2(G.police.units[0] ? (G.police.units[0].kind === 'car' ? G.police.units[0].car : G.police.units[0].ped) : p, p) < 80 * 80);
   effects.update(dt);
+  tracers.update(dt);
   hud.update(G, dt);
 
   // --- prompts ---

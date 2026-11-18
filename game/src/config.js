@@ -151,6 +151,21 @@ export const MISSIONS = [
   },
 ];
 
+// Gang war: Geng Ombak (teal, west end of the Pasar Malam street) vs
+// Geng Bara (red, east end). A free-roam event, not a mission.
+export const GANGS = {
+  zone: { x: 150, z: 120, radius: 42 }, // the z=120 road through Pasar Malam
+  size: 5, // members per side
+  range: 30, // shooting range
+  damage: 8, // damage to the player per crossfire hit
+  heatPerSecond: 0.4, // gunfire draws police while the player watches
+  cooldown: 60, // seconds before the war can start again
+  sides: [
+    { id: 'ombak', name: 'Geng Ombak', shirt: 0x1f9db0, pants: 0x1d2f38 },
+    { id: 'bara', name: 'Geng Bara', shirt: 0xd93a2b, pants: 0x2e2a26 },
+  ],
+};
+
 export const SPAWNS = {
   player: { x: 0, z: -8, heading: 0 },
   policeStation: { x: -210, z: -210 },

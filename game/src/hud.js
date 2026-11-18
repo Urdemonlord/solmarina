@@ -14,7 +14,7 @@ export function createHud(buildings) {
     objective: $('hud-objective'), prompt: $('hud-prompt'),
     minimap: $('hud-minimap'), crosshair: $('hud-crosshair'),
     weapon: $('hud-weapon'), sight: $('hud-sight'),
-    heli: $('hud-heli'),
+    heli: $('hud-heli'), war: $('hud-war'),
     minimapLabel: $('hud-minimap-label'),
     mapScreen: $('screen-map'), mapCanvas: $('map-canvas'),
     phoneJob: $('phone-job'), phoneStats: $('phone-stats'),
@@ -120,6 +120,14 @@ export function createHud(buildings) {
       ctx.strokeStyle = '#ff9040';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(mapX(G.heli.x), mapZ(G.heli.z), 7, 0, Math.PI * 2); ctx.stroke();
+    }
+    // gang war members: teal Ombak vs red Bara
+    if (G.gangs) {
+      for (const m of G.gangs.members) {
+        if (m.down > 0) continue;
+        ctx.fillStyle = m.gang === 'ombak' ? '#1f9db0' : '#d93a2b';
+        ctx.beginPath(); ctx.arc(mapX(m.x), mapZ(m.z), 2.5, 0, Math.PI * 2); ctx.fill();
+      }
     }
     // player arrow
     ctx.save();
@@ -260,14 +268,20 @@ export function createHud(buildings) {
           + '<span class="st-' + st + '">' + statusLabel[st] + '</span></div>';
       }).join('');
     }
-    // MISI pane: the whole arc with reward + first step
+    // MISI pane: the whole arc with reward + first step, then the
+    // gang war event (free-roam, not a mission): its live status.
     if (el.phoneMissions) {
       el.phoneMissions.innerHTML = MISSIONS.map((m, i) => {
         const st = missionStatus(done, activeId, m.id);
         return '<div class="mrow"><span><b>' + (i + 1) + '.</b> ' + m.title
           + '<br><span class="mdesc">' + m.steps[0].label + '</span></span>'
           + '<span>$' + m.reward + '<br><span class="st-' + st + '">' + statusLabel[st] + '</span></span></div>';
-      }).join('');
+      }).join('')
+        + '<div class="mrow"><span><b>Peristiwa.</b> Perang Gang &mdash; Pasar Malam'
+        + '<br><span class="mdesc">Geng Ombak vs Geng Bara, di jalan z=120</span></span>'
+        + '<span>' + (G.gangs && G.gangs.active ? '<span class="st-active">▶ BERLANGSUNG</span>'
+          : (G.gangs && G.gangs.winner ? '<span class="st-done">✓ ' + (G.gangs.winner === 'ombak' ? 'OMBAK' : 'BARA') + ' MENANG</span>'
+            : '<span class="st-locked">TENANG</span>')) + '</span></div>';
     }
     // KONTAK pane: contacts with avatars, from config
     if (el.phoneContacts) {
@@ -382,6 +396,12 @@ export function createHud(buildings) {
       // why the tail will not drop
       if (el.heli) {
         el.heli.style.display = (G.heli && G.heli.active) ? 'block' : 'none';
+      }
+      // gang war banner: the firefight is often off to the side, so the
+      // HUD names it instead of leaving the player guessing why the
+      // street is full of tracers
+      if (el.war) {
+        el.war.style.display = (G.gangs && G.gangs.active) ? 'block' : 'none';
       }
       // current district under the minimap
       if (el.minimapLabel) {

@@ -4,6 +4,7 @@
 // 4-mission. All state is set from the live game, never faked.
 import { SPAWNS, STALLS } from './config.js';
 import { balanceUnits } from './police.js';
+import { createGangWar, crossfireLines } from './gangs.js';
 
 export function stageShot(G, name) {
   const params = new URLSearchParams(window.location.search);
@@ -26,53 +27,88 @@ export function stageShot(G, name) {
   }
   if (name === '2-drive') {
     G.screen = 'play';
-    // golden hour (17:21) in the downtown tower canyon, from the player's
-    // angle: the sports car drives NORTH up the x=200 road straight at
-    // the skyline cluster (towers 60-110 at z -295..-300, x 130-290), so
-    // the towers loom ahead over the rooftops instead of sitting behind
-    // the title camera. The follow camera is low behind the car, so the
-    // towers fill the top of the frame like the reference title shot.
-    // Fog is pushed out (as on 1-start) so the towers stay crisp.
-    G.clock = 561;
-    if (G.scene && G.scene.fog) { G.scene.fog.near = 300; G.scene.fog.far = 1800; }
-    const car = G.vehicles.list.find((c) => c.type === 'sports' && !c.driver);
-    car.x = 200; car.z = -160; // mid-block on the x=200 road: a clean
-    // frame. (z=-200 puts the player on a cross street, where
-    // cross-traffic parks a truck between the camera and the car.)
-    G.player.x = car.x + 3; G.player.z = car.z;
-    G.enterCar(car, true);
-    car.speed = 22;
-    car.heading = 0; // driving north, toward the towers. Heading 0 IS
-    // north here: forward is (-sin h, -cos h), so 0 -> (0,-1) = -z.
-    // -PI/2 is EAST (the v5 bug: the car drove east down a cross
-    // street, the camera looked east, and all the traffic staged
-    // north of the player sat ~85 deg off-axis, out of frame).
-    G.player.x = car.x; G.player.z = car.z;
-    G.cameraRig.snapTo(car.heading); // snap: the rig lerps and would not
-    // converge in the two staged frames, leaving the camera off-axis
-    // traffic ahead on the same road, so the drive reads as a city
-    // street with cars in it, not an empty stretch of asphalt
+    // NIGHT (21:17) gang war on the Pasar Malam street (z=120 road), from
+    // the player's angle: Raka on foot in the middle of the road, caught
+    // between Geng Ombak (teal, west) and Geng Bara (red, east) trading
+    // fire across the frame. Tracers cross left-right, stalls + lit
+    // windows behind, peds fleeing south, a foot cop closing in. This
+    // replaces the old tower drive: the towers never loomed from the low
+    // camera (v5 honest gap), and a street shootout fills the frame
+    // better than an empty road. The camera is staged (not the follow
+    // rig): the rig looks through the player, and both gangs sit ~50 deg
+    // off-axis from there, outside the frame. The staged camera sits
+    // behind Raka at y 7 with a 70 deg FOV, so both gangs read at ~37
+    // deg off-axis and Raka stays big in the centre.
+    G.clock = 797;
+    if (G.scene && G.scene.fog) { G.scene.fog.near = 200; G.scene.fog.far = 1200; }
+    G.player.x = 150; G.player.z = 126;
+    G.player.heading = 0; // facing north, across the road at the stalls
+    G.camYaw = 0;
+    G.player.onFoot = true;
+    G.player.car = null;
+    G.player.hasPistol = true;
+    G.player.ammo = 24;
+    G.player.health = 100;
+    G.player.money = 0;
+    // the war itself, staged directly (not via the trigger)
+    G.gangs = createGangWar(G.rng);
+    // pull the two lines closer so both read in frame, on the road's
+    // north half (clear of the stalls at z 124 and of the block's
+    // buildings, which stop at z 110)
+    const ombakSpots = [[128, 114], [132, 117], [136, 113], [130, 116], [134, 115]];
+    const baraSpots = [[172, 114], [168, 117], [164, 113], [170, 116], [166, 115]];
+    let oi = 0, bi = 0;
+    for (const m of G.gangs.members) {
+      if (m.gang === 'ombak') {
+        [m.x, m.z] = ombakSpots[oi++];
+        m.heading = -Math.PI / 2; // faces east, at Bara
+      } else {
+        [m.x, m.z] = baraSpots[bi++];
+        m.heading = Math.PI / 2; // faces west, at Ombak
+      }
+    }
+    // staged crossfire: long-life tracers so the captured frame shows
+    // the firefight (live tracers live 0.12s and would expire before
+    // frame 2), plus muzzle flashes frozen at the shooters. Endpoint
+    // heights alternate so the lines cross diagonally (all at one
+    // height they read as parallel wires, not crossfire).
+    crossfireLines(G.gangs).forEach((line, i) => {
+      const from = { ...line.from, y: 1.0 + (i % 2) * 0.6 };
+      const to = { ...line.to, y: 1.6 - (i % 2) * 0.6 };
+      // twice, 0.06 apart: THREE.Line is 1px and a single line is too
+      // thin to read as gunfire at this distance
+      G.tracers.fire(from, to, line.color, 5);
+      G.tracers.fire({ ...from, y: from.y + 0.06 }, { ...to, y: to.y + 0.06 }, line.color, 5);
+    });
+    for (const m of G.gangs.members.slice(0, 4)) {
+      G.effects.burst(m.x, 1.3, m.z, 10, [1, 0.9, 0.5], 4, 1);
+    }
+    // cover cars on the road between the gangs, parked
     const traffic = G.vehicles.list.filter((c) => c.driver === 'traffic');
     const spots = [
-      { x: 196, z: -200, heading: 0 }, // same direction, west lane, northbound
-      { x: 196, z: -235, heading: 0 },
-      { x: 196, z: -262, heading: 0 }, // truck silhouette by the towers
-      { x: 204, z: -215, heading: Math.PI }, // oncoming taxi lane, southbound
+      { x: 141, z: 120, heading: Math.PI / 2 },
+      { x: 159, z: 120, heading: -Math.PI / 2 },
     ];
-    traffic.slice(0, 4).forEach((c, i) => {
-      c.x = spots[i].x; c.z = spots[i].z; c.heading = spots[i].heading; c.speed = 12;
+    traffic.slice(0, 2).forEach((c, i) => {
+      c.x = spots[i].x; c.z = spots[i].z; c.heading = spots[i].heading; c.speed = 0;
     });
-    // pedestrians on the tower-road sidewalks, so the frame bottom is
-    // people and street, not empty asphalt
-    G.peds.list.slice(0, 6).forEach((ped, i) => {
-      const spots = [
-        [186, -180], [214, -195], [186, -215],
-        [214, -230], [186, -245], [214, -255],
-      ];
-      ped.x = spots[i][0]; ped.z = spots[i][1];
-      ped.heading = 0; // facing the road
+    // pedestrians fleeing the war zone, running south past the camera
+    G.peds.list.slice(0, 8).forEach((ped, i) => {
+      ped.x = 128 + (i % 4) * 15;
+      ped.z = 134 + Math.floor(i / 4) * 7;
+      ped.state = 'flee';
+      ped.heading = Math.PI; // facing south, away from the street
     });
-    G.shotCamera = null;
+    // police: 2 stars, one foot cop closing in from the east side
+    G.wanted.addHeat(30);
+    balanceUnits(G.police, G.wanted.stars, G.player.x, G.player.z, G.rng);
+    const footCop = G.police.units.find((u) => u.kind === 'foot');
+    if (footCop) { footCop.ped.x = 162; footCop.ped.z = 127; }
+    const policeCar = G.police.units.find((u) => u.kind === 'car');
+    if (policeCar) { policeCar.car.x = 205; policeCar.car.z = 120; policeCar.car.heading = Math.PI / 2; policeCar.car.speed = 0; }
+    // staged camera + wider FOV (see the header comment above)
+    if (G.camera) { G.camera.fov = 70; G.camera.updateProjectionMatrix(); }
+    G.shotCamera = { pos: { x: 150, y: 7, z: 142 }, look: { x: 150, y: 1.2, z: 108 } };
     return;
   }
   if (name === '3-chase') {
@@ -114,6 +150,17 @@ export function stageShot(G, name) {
       const s = spots[i % spots.length];
       u.car.x = s.x; u.car.z = s.z; u.car.heading = s.heading; u.car.speed = 20;
     });
+    // staged police fire: long-life tracers from the police cars toward
+    // the player, so the captured frame shows the chase shooting back
+    // (live police tracers live 0.12s and would expire before frame 2)
+    for (const u of units) {
+      G.tracers.fire(
+        { x: u.car.x, y: 1.3, z: u.car.z },
+        { x: car.x, y: 1.2, z: car.z },
+        0xffe9a0, 5,
+      );
+    }
+    G.effects.burst(units[0].car.x, 1.3, units[0].car.z, 6, [1, 0.9, 0.5], 3, 1);
     // traffic ahead on the beachfront road (the other v2 complaint:
     // no cars ahead): four cars strung down the road in front of the
     // player, so the road ahead is full, not an empty stretch
