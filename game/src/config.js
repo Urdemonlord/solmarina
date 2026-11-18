@@ -161,8 +161,8 @@ export const GANGS = {
   heatPerSecond: 0.4, // gunfire draws police while the player watches
   cooldown: 60, // seconds before the war can start again
   sides: [
-    { id: 'ombak', name: 'Geng Ombak', shirt: 0x1f9db0, pants: 0x1d2f38 },
-    { id: 'bara', name: 'Geng Bara', shirt: 0xd93a2b, pants: 0x2e2a26 },
+    { id: 'ombak', name: 'Geng Ombak', shirt: 0x2cc3e6, pants: 0x1d2f38 },
+    { id: 'bara', name: 'Geng Bara', shirt: 0xef4a32, pants: 0x2e2a26 },
   ],
 };
 

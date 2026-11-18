@@ -3,6 +3,7 @@
 // window.__solmarinaReady. Scenes: 1-start (title), 2-drive, 3-chase,
 // 4-mission. All state is set from the live game, never faked.
 import { SPAWNS, STALLS } from './config.js';
+import { makeLamp, makeHydrant, makeStallMesh } from './render.js';
 import { balanceUnits } from './police.js';
 import { createGangWar, crossfireLines } from './gangs.js';
 
@@ -75,10 +76,17 @@ export function stageShot(G, name) {
     crossfireLines(G.gangs).forEach((line, i) => {
       const from = { ...line.from, y: 1.0 + (i % 2) * 0.6 };
       const to = { ...line.to, y: 1.6 - (i % 2) * 0.6 };
-      // twice, 0.06 apart: THREE.Line is 1px and a single line is too
-      // thin to read as gunfire at this distance
-      G.tracers.fire(from, to, line.color, 5);
-      G.tracers.fire({ ...from, y: from.y + 0.06 }, { ...to, y: to.y + 0.06 }, line.color, 5);
+      // once per line, and SHORT: a streak from the muzzle, not a
+      // full-width beam. 8 full-length parallel bolts in one screen band
+      // saturate into a white bar; staggered reaches (45-62%) keep 8
+      // distinct diagonal streaks and leave the gang members visible.
+      const f = [0.5, 0.62, 0.45, 0.58][i % 4];
+      const shortTo = {
+        x: from.x + (to.x - from.x) * f,
+        y: from.y + (to.y - from.y) * f,
+        z: from.z + (to.z - from.z) * f,
+      };
+      G.tracers.fire(from, shortTo, line.color, 5);
     });
     for (const m of G.gangs.members.slice(0, 4)) {
       G.effects.burst(m.x, 1.3, m.z, 10, [1, 0.9, 0.5], 4, 1);
@@ -99,6 +107,34 @@ export function stageShot(G, name) {
       ped.state = 'flee';
       ped.heading = Math.PI; // facing south, away from the street
     });
+    // foreground fill (the v5 gap: the bottom of the frame was bare
+    // pavement): parked cars along the south kerb, lamps + hydrants at
+    // the frame edges, more fleeing peds close to the camera, and a
+    // market stall half-cut at the left edge, so the bottom of the shot
+    // is street life, not empty asphalt. Positions sit at z 132-134:
+    // the first pass put them at z 137-141 and they fell below the
+    // frame's bottom edge (short props that close to the camera are
+    // under the bottom ray); the fleeing peds at z 134 render at the
+    // bottom edge, so the fill mirrors that band.
+    traffic.slice(2, 5).forEach((c, i) => {
+      const spots = [
+        { x: 136, z: 133, heading: Math.PI / 2 },
+        { x: 164, z: 133, heading: -Math.PI / 2 },
+        { x: 150, z: 134, heading: Math.PI / 2 },
+      ];
+      c.x = spots[i].x; c.z = spots[i].z; c.heading = spots[i].heading; c.speed = 0;
+    });
+    G.peds.list.slice(8, 12).forEach((ped, i) => {
+      ped.x = 134 + i * 10;
+      ped.z = 132;
+      ped.state = 'flee';
+      ped.heading = Math.PI;
+    });
+    const lampL = makeLamp(); lampL.position.set(128, 0, 134); G.scene.add(lampL);
+    const lampR = makeLamp(); lampR.position.set(172, 0, 134); G.scene.add(lampR);
+    const hydL = makeHydrant(); hydL.position.set(144, 0, 134); G.scene.add(hydL);
+    const hydR = makeHydrant(); hydR.position.set(156, 0, 134); G.scene.add(hydR);
+    const stallF = makeStallMesh(STALLS[1]); stallF.position.set(120, 0, 134); G.scene.add(stallF);
     // police: 2 stars, one foot cop closing in from the east side
     G.wanted.addHeat(30);
     balanceUnits(G.police, G.wanted.stars, G.player.x, G.player.z, G.rng);

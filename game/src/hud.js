@@ -161,18 +161,28 @@ export function createHud(buildings) {
     const tints = ['rgba(224,120,86,0.25)', 'rgba(95,158,143,0.25)', 'rgba(224,168,60,0.25)', 'rgba(138,155,176,0.25)', 'rgba(88,160,92,0.25)', 'rgba(201,123,132,0.25)', 'rgba(93,125,217,0.25)', 'rgba(47,127,184,0.25)'];
     mapCtx.font = 'bold 15px Arial, sans-serif';
     mapCtx.textAlign = 'center';
+    // mission step/target first: a district label must never read
+    // through a marker. The 4-mission shot put both the player arrow
+    // and the mission marker on PASAR MALAM, so any label whose text
+    // box a marker would land on moves up clear of it.
+    const step = G.missions.currentStep();
+    const target = step && step.target ? step.target : null;
+    const px = mx(G.player.x), py = mz(G.player.z);
+    const tx = target ? mx(target.x) : -9999, ty = target ? mz(target.z) : -9999;
     DISTRICTS.forEach((d, i) => {
       mapCtx.fillStyle = tints[i % tints.length];
       mapCtx.fillRect(mx(d.x - d.w / 2), mz(d.z - d.h / 2), (d.w / 660) * MAPW, (d.h / 720) * MAPH);
       mapCtx.strokeStyle = 'rgba(255,255,255,0.85)';
       mapCtx.lineWidth = 3;
-      mapCtx.strokeText(d.name.toUpperCase(), mx(d.x), mz(d.z) + 5);
+      let ly = mz(d.z) + 5;
+      const lx = mx(d.x);
+      const onMarker = (x, y) => Math.abs(x - lx) < 70 && Math.abs(y - ly) < 26;
+      if (onMarker(px, py) || onMarker(tx, ty)) ly -= 32;
+      mapCtx.strokeText(d.name.toUpperCase(), lx, ly);
       mapCtx.fillStyle = '#22242a';
-      mapCtx.fillText(d.name.toUpperCase(), mx(d.x), mz(d.z) + 5);
+      mapCtx.fillText(d.name.toUpperCase(), lx, ly);
     });
     // mission route polyline (player -> target along the road grid)
-    const step = G.missions.currentStep();
-    const target = step && step.target ? step.target : null;
     if (target) {
       const pts = routePoints({ x: G.player.x, z: G.player.z }, target);
       mapCtx.strokeStyle = '#e04848';

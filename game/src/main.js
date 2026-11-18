@@ -127,6 +127,15 @@ function meshForGang(member) {
   if (!gangMeshes.has(member)) {
     const mesh = makeHumanMesh(member.shirt, member.pants, 0xd9a066);
     mesh.userData.ref = { kind: 'gang', member, war: G.gangs };
+    // gang members read bigger and brighter than peds, and the team
+    // colour must be obvious at a glance in the night shootout: 1.3x
+    // scale plus a glowing team headband (peds keep the dark hair).
+    mesh.scale.setScalar(1.3);
+    const bandColor = member.gang === 'ombak' ? 0x35e0f5 : 0xff5a3c;
+    const bandMat = new THREE.MeshLambertMaterial({ color: bandColor, emissive: bandColor, emissiveIntensity: 0.7 });
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.09, 0.36), bandMat);
+    band.position.y = 1.78;
+    mesh.add(band);
     scene.add(mesh);
     gangMeshes.set(member, mesh);
   }

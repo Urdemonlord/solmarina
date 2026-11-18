@@ -576,11 +576,34 @@ export function makeHeliMesh() {
     strut.position.set(sx * 1.1, -0.75, 0.8);
     g.add(skid, strut);
   }
+  // belly: a darker inset panel + sensor ball + second strut pair, so
+  // the underside reads as a helicopter from below instead of a flat
+  // slab (the chase camera sits below the heli)
+  const belly = box(2.0, 0.3, 3.0, mat(0x1e3a5f));
+  belly.position.y = -0.8;
+  g.add(belly);
+  const sensor = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), mat(0x22242a));
+  sensor.position.set(0, -1.0, -1.3);
+  g.add(sensor);
+  for (const sx of [-1, 1]) {
+    const strut2 = box(0.1, 0.5, 0.1, mat(0x22242a));
+    strut2.position.set(sx * 1.1, -0.75, -0.8);
+    g.add(strut2);
+  }
+  // tail rotor on the fin, so the tail reads from the side too
+  const tailRotor = new THREE.Group();
+  for (const a of [0, Math.PI / 2]) {
+    const blade = box(0.08, 1.1, 0.12, bladeMat);
+    blade.rotation.x = a;
+    tailRotor.add(blade);
+  }
+  tailRotor.position.set(0.2, 0.8, 6.0);
+  g.add(tailRotor);
   // searchlight cone pointing down (subtle: at golden hour a bright
   // cone reads as a grey sail, so it stays faint)
   const beam = new THREE.Mesh(
     new THREE.ConeGeometry(2.5, 16, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false }),
   );
   beam.position.y = -8.5;
   beam.rotation.x = Math.PI; // apex up at the heli
@@ -837,47 +860,64 @@ export function createParticles(scene) {
 }
 
 // ---------- tracer lines ----------
-// Gunfire reads as lines, not dots: a pool of 1px lines that flash
-// between shooter and target and fade fast (0.12s live). Staged shots
-// fire them with a long life instead, so the captured frame keeps them.
+// Gunfire reads as glowing bolts, not dots or wires: a pool of short
+// additive cylinders (bright white core + coloured halo) stretched
+// between shooter and target, fading fast (0.12s live). THREE.Line is
+// always 1px no matter the distance, so at screenshot range it read as
+// a wire; a cylinder keeps real thickness from every angle. Staged
+// shots fire them with a long life instead, so the captured frame
+// keeps them.
+const _tracerUp = new THREE.Vector3(0, 1, 0);
 export function createTracers(scene) {
   const N = 24;
-  const lines = [];
+  const bolts = [];
+  const outerGeo = new THREE.CylinderGeometry(0.09, 0.09, 1, 6, 1, true);
+  const coreGeo = new THREE.CylinderGeometry(0.04, 0.04, 1, 6, 1, true);
   for (let i = 0; i < N; i++) {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    const material = new THREE.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0 });
-    const line = new THREE.Line(geo, material);
-    line.frustumCulled = false;
-    line.visible = false;
-    scene.add(line);
-    lines.push({ line, life: 0, max: 1 });
+    const outerMat = new THREE.MeshBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(outerGeo, outerMat), new THREE.Mesh(coreGeo, coreMat));
+    group.visible = false;
+    scene.add(group);
+    bolts.push({ group, outerMat, coreMat, life: 0, max: 1 });
   }
   let cursor = 0;
+  const dir = new THREE.Vector3();
+  const mid = new THREE.Vector3();
   return {
     fire(from, to, color, life) {
-      const t = lines[cursor];
+      const t = bolts[cursor];
       cursor = (cursor + 1) % N;
-      const pos = t.line.geometry.attributes.position.array;
-      pos[0] = from.x; pos[1] = from.y; pos[2] = from.z;
-      pos[3] = to.x; pos[4] = to.y; pos[5] = to.z;
-      t.line.geometry.attributes.position.needsUpdate = true;
-      t.line.material.color.setHex(color || 0xffe9a0);
+      dir.set(to.x - from.x, to.y - from.y, to.z - from.z);
+      const len = dir.length();
+      if (len < 0.05) { t.group.visible = false; t.life = 0; return; }
+      dir.divideScalar(len);
+      mid.set((from.x + to.x) / 2, (from.y + to.y) / 2, (from.z + to.z) / 2);
+      t.group.position.copy(mid);
+      t.group.quaternion.setFromUnitVectors(_tracerUp, dir);
+      t.group.scale.set(1, len, 1);
+      const c = color || 0xffe9a0;
+      t.outerMat.color.setHex(c);
+      t.coreMat.color.setHex(c).lerp(new THREE.Color(0xffffff), 0.7);
       t.life = life || 0.12;
       t.max = t.life;
-      t.line.material.opacity = 1;
-      t.line.visible = true;
+      t.outerMat.opacity = 0.7;
+      t.coreMat.opacity = 1;
+      t.group.visible = true;
     },
     update(dt) {
-      for (const t of lines) {
+      for (const t of bolts) {
         if (t.life > 0) {
           t.life -= dt;
-          t.line.material.opacity = Math.max(0, t.life / t.max);
-          if (t.life <= 0) t.line.visible = false;
+          const f = Math.max(0, t.life / t.max);
+          t.outerMat.opacity = 0.7 * f;
+          t.coreMat.opacity = f;
+          if (t.life <= 0) t.group.visible = false;
         }
       }
     },
-    get activeCount() { return lines.filter((t) => t.life > 0).length; },
+    get activeCount() { return bolts.filter((t) => t.life > 0).length; },
   };
 }
 
