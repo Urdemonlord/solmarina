@@ -766,21 +766,23 @@ export function poseIdle(mesh) {
 }
 
 // ---------- mission beacon + pickup ----------
-export function makeBeaconMesh() {
+// color: the beacon colour (default gold). Daily events use orange,
+// the gun shop green, so the map reads at a glance.
+export function makeBeaconMesh(color = 0xffd23e) {
   const g = new THREE.Group();
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(1.6, 1.6, 26, 12, 1, true),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
   );
   beam.position.y = 13;
   const gem = new THREE.Mesh(
     new THREE.OctahedronGeometry(0.9),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+    new THREE.MeshBasicMaterial({ color }),
   );
   gem.position.y = 4.5;
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(2.2, 0.14, 8, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+    new THREE.MeshBasicMaterial({ color }),
   );
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 0.15;
@@ -789,19 +791,68 @@ export function makeBeaconMesh() {
   return g;
 }
 
-export function makePickupMesh() {
+export function makePickupMesh(color = 0xffe9a0) {
   const g = new THREE.Group();
   const gun = box(0.5, 0.14, 0.16, mat(0x22242a));
   const grip = box(0.14, 0.3, 0.14, mat(0x22242a));
   grip.position.set(0.16, -0.18, 0);
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(0.9, 0.07, 8, 32),
-    new THREE.MeshBasicMaterial({ color: 0xffe9a0 }),
+    new THREE.MeshBasicMaterial({ color }),
   );
   ring.rotation.x = Math.PI / 2;
   g.add(gun, grip, ring);
   g.userData.ring = ring;
   return g;
+}
+
+// A small glowing crate for the m8 collect mission: a gold box on a
+// dark base, so it reads as loot at a glance.
+export function makeCrateMesh() {
+  const g = new THREE.Group();
+  const crate = box(0.9, 0.9, 0.9, mat(0xd9a441));
+  crate.position.y = 0.45;
+  const lid = box(1.0, 0.14, 1.0, mat(0x8a6a20));
+  lid.position.y = 0.95;
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.1, 0.07, 8, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffd23e }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.12;
+  g.add(crate, lid, ring);
+  g.userData.ring = ring;
+  return g;
+}
+
+// Enemy health bar: a dark back plate plus a green-to-red front bar,
+// billboarded toward the camera each frame (main.js calls faceHealthBar).
+// One bar per standing enemy; the pool is sized for gang wars + cops.
+export function makeHealthBar() {
+  const g = new THREE.Group();
+  const back = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.1, 0.14),
+    new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.75, depthWrite: false }),
+  );
+  const front = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.04, 0.09),
+    new THREE.MeshBasicMaterial({ color: 0x58c96b, transparent: true, opacity: 0.95, depthWrite: false }),
+  );
+  front.position.z = 0.001;
+  g.add(back, front);
+  g.userData.front = front;
+  g.visible = false;
+  return g;
+}
+
+export function faceHealthBar(bar, x, y, z, health, camera) {
+  bar.position.set(x, y, z);
+  bar.lookAt(camera.position);
+  const f = Math.max(0, Math.min(1, health / 100));
+  bar.userData.front.scale.x = Math.max(0.02, f);
+  bar.userData.front.position.x = -(1 - f) * 0.52;
+  bar.userData.front.material.color.setHex(f > 0.5 ? 0x58c96b : f > 0.25 ? 0xe8c832 : 0xe04848);
+  bar.visible = f > 0;
 }
 
 // ---------- particles ----------

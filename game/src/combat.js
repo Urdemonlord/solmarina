@@ -25,7 +25,8 @@ export function punch(player, peds, policeUnits, effects, gangWar) {
   }
   for (const ped of peds) {
     if (ped.dead || ped.down > 0) continue;
-    consider(ped, 'ped', null);
+    // the daily bounty target is a ped with real health, not a knockdown
+    consider(ped, ped.bounty ? 'bounty' : 'ped', null);
   }
   for (const u of policeUnits) {
     if (u.kind !== 'foot' || u.ped.dead || u.ped.down > 0) continue;
@@ -42,6 +43,9 @@ export function punch(player, peds, policeUnits, effects, gangWar) {
   if (best.kind === 'cop') {
     p.health = (p.health || 100) - 25;
     if (p.health <= 0) { p.down = 10; p.health = 100; }
+  } else if (best.kind === 'bounty') {
+    p.health = (p.health || 100) - 25;
+    if (p.health <= 0) { p.down = 999; p.health = 0; }
   } else if (best.kind === 'gang') {
     damageMember(p, 25);
     markHostile(gangWar, p.gang);
@@ -68,9 +72,11 @@ export function punch(player, peds, policeUnits, effects, gangWar) {
 // horizontal aim hits what the camera is pointed at, at any distance.
 // origin: {x, y, z} (the gun); dir: {x, z} unit horizontal forward.
 // targets: [{ ref }] where ref carries ped | car | member (+ war for
-// gang refs). Returns { point, victim } or null.
-export function shootAim(origin, dir, targets, effects) {
-  const RANGE = 40;
+// gang refs). opts.damage overrides the default 34 (per-weapon damage).
+// Returns { point, victim } or null.
+export function shootAim(origin, dir, targets, effects, opts = {}) {
+  const dmg = opts.damage || 34;
+  const RANGE = opts.range || 40;
   const LATERAL = 0.9; // about a body width either side of the aim line
   let best = null, bestD = RANGE;
   for (const t of targets) {
@@ -95,12 +101,17 @@ export function shootAim(origin, dir, targets, effects) {
   if (!best) return { point, victim: null };
   const ref = best.ref;
   if (ref.kind === 'cop') {
-    ref.ped.health = (ref.ped.health || 100) - 34;
+    ref.ped.health = (ref.ped.health || 100) - dmg;
     if (ref.ped.health <= 0) { ref.ped.down = 10; ref.ped.health = 100; }
   } else if (ref.kind === 'gang') {
     // shooting one member turns his whole gang hostile to the player
-    damageMember(ref.member, 34);
+    damageMember(ref.member, dmg);
     if (ref.war) markHostile(ref.war, ref.member.gang);
+  } else if (ref.kind === 'bounty') {
+    // the daily bounty target has real health: chip it down, and he
+    // stays down once it hits zero (down 999 = out for good)
+    ref.ped.health = (ref.ped.health || 100) - dmg;
+    if (ref.ped.health <= 0) { ref.ped.down = 999; ref.ped.health = 0; }
   } else if (ref.kind === 'ped') {
     ref.ped.down = 8;
   } else if (ref.kind === 'car') {

@@ -7,9 +7,15 @@ export function makeSave(state) {
     version: 1,
     money: state.money,
     done: [...state.done],
+    sideDone: [...(state.sideDone || [])],
     health: state.health,
     player: { x: state.playerX, z: state.playerZ, heading: state.heading },
     hasPistol: !!state.hasPistol,
+    // polish 7: weapon loadout (non-pistol), daily event completion.
+    // Old saves lack these fields; readers must default-guard.
+    weapons: state.weapons || null,
+    pistolReserve: state.pistolReserve || 0,
+    dailyDone: state.dailyDone || null,
     savedAt: Date.now(),
   };
 }

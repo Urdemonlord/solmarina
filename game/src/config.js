@@ -176,6 +176,65 @@ export const SPAWNS = {
   cafe: { x: 160, z: 120 },
 };
 
+// Gun shop (Kota Tua): sells the rifle and ammo. The SMG and shotgun
+// are free pickups hidden around the city instead.
+export const GUNSHOP = {
+  x: -200, z: 30, name: 'Toko Senjata Bang Joko',
+  riflePrice: 800, ammoPrice: 60,
+};
+
+// Free weapon pickups: SMG at the marina, shotgun on the beach.
+export const WEAPON_PICKUPS = [
+  { id: 'smg', x: -180, z: 260, color: 0x2cc3e6 },
+  { id: 'shotgun', x: 0, z: 325, color: 0xff8c2e },
+];
+
+// Side-mission arc (m5-m8): unlocked after the main arc (m0-m4) is
+// done. Same step machine as the main arc, plus three new kinds:
+// escort (walk a contact to a target alive), takedown (down N gang
+// members in the war), collect (pick up N crates around the city).
+export const SIDE_MISSIONS = [
+  {
+    id: 'm5', title: 'Kawal Dimas', reward: 500, time: 240,
+    start: { x: 0, z: -40 },
+    steps: [
+      { kind: 'escort', label: 'Kawal Dimas jalan kaki ke pelabuhan', target: { x: 205, z: -195 } },
+    ],
+  },
+  {
+    id: 'm6', title: 'Buru Geng Bara', reward: 700, time: 300,
+    start: { x: 150, z: 120 },
+    steps: [
+      { kind: 'takedown', label: 'Jatuhkan 4 anggota Geng Bara di Pasar Malam', count: 4 },
+    ],
+  },
+  {
+    id: 'm7', title: 'Antar Kilat Marlo', reward: 450, time: 150,
+    start: { x: 0, z: -40 },
+    steps: [
+      { kind: 'goto', label: 'Antar ke Kafe Ombak', target: { x: 160, z: 120 } },
+      { kind: 'goto', label: 'Antar ke marina', target: { x: -210, z: 250 } },
+      { kind: 'goto', label: 'Antar ke pelabuhan', target: { x: 205, z: -195 } },
+    ],
+  },
+  {
+    id: 'm8', title: 'Kolektor Paket', reward: 350, time: 240,
+    start: { x: 0, z: -40 },
+    steps: [
+      { kind: 'collect', label: 'Kumpulkan 5 paket tersebar di kota', count: 5 },
+    ],
+  },
+];
+
+// Glowing crates for m8 (collect): park, hill, beach, harbour, garage.
+export const COLLECT_SPOTS = [
+  { x: 40, z: -160 },
+  { x: -230, z: -230 },
+  { x: 0, z: 325 },
+  { x: 205, z: -195 },
+  { x: -160, z: -120 },
+];
+
 export const LIMITS = {
   trafficCars: 10,
   peds: 14,

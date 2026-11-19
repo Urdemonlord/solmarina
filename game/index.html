@@ -23,6 +23,7 @@
   #hud-minimap { position: absolute; top: 12px; right: 12px; border: 3px solid #ffd23e; border-radius: 50%; background: #23272e; box-shadow: 0 0 0 2px #22242a; }
   #hud-minimap-label { position: absolute; top: 218px; right: 12px; color: #ffd23e; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-align: right; text-shadow: 1px 1px 2px #000; }
   #hud-objective { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); padding: 8px 18px; font-size: 15px; font-weight: 700; color: #ffd23e; max-width: 70%; text-align: center; }
+  #hud-daily { position: absolute; top: 132px; left: 50%; transform: translateX(-50%); padding: 4px 14px; font-size: 13px; font-weight: 700; letter-spacing: 1px; color: #fff; background: #e0782e; display: none; max-width: 70%; text-align: center; }
   #hud-prompt { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%); padding: 8px 16px; font-size: 14px; color: #fff; text-align: center; }
   #hud-speed { position: absolute; bottom: 16px; left: 16px; padding: 8px 14px; font-size: 22px; font-weight: 800; color: #fff; display: none; }
   #hud-speed span { font-size: 13px; font-weight: 400; color: #e04848; }
@@ -45,6 +46,7 @@
   .screen .keys { font-size: 15px; color: #bbb; }
   .screen .start { font-size: 20px; font-weight: 700; color: #ffd23e; margin-top: 20px; }
   #title-save { display: none; margin-top: 12px; font-size: 15px; color: #58d96b; }
+  #title-daily { margin-top: 12px; font-size: 15px; font-weight: 700; color: #ff8c2e; text-shadow: 1px 1px 0 #000; }
   .btn-row { display: flex; gap: 12px; margin-top: 18px; }
   button.menu-btn { font-family: inherit; font-size: 18px; font-weight: 800; letter-spacing: 1px; padding: 12px 28px; border: 2px solid #22242a; border-radius: 6px; cursor: pointer; color: #22242a; background: #ffd23e; }
   button.menu-btn:hover { background: #ffe27a; }
@@ -111,6 +113,7 @@
 <canvas id="hud-minimap" class="hud-el" width="200" height="200"></canvas>
 <div id="hud-minimap-label" class="hud-el">SOLMARINA</div>
 <div id="hud-objective" class="panel hud-el" style="display:none"></div>
+<div id="hud-daily" class="panel hud-el" style="display:none"></div>
 <div id="hud-prompt" class="panel hud-el" style="display:none"></div>
 <div id="hud-speed" class="panel hud-el"></div>
 <div id="hud-crosshair" class="hud-el"></div>
@@ -126,6 +129,7 @@
     <button id="title-continue" class="menu-btn secondary" style="display:none">LANJUTKAN</button>
   </div>
   <div id="title-save">Ada simpanan: <span id="title-money"></span> &mdash; tekan C untuk lanjutkan</div>
+  <div id="title-daily"></div>
   <div class="controls-table">
     <h3>KONTROL</h3>
     <table>
@@ -133,8 +137,10 @@
       <tr><td><kbd>Shift</kbd>lari</td><td><kbd>Spasi</kbd>rem tangan</td></tr>
       <tr><td><kbd>E</kbd>masuk mobil / beli</td><td><kbd>F</kbd>pukul</td></tr>
       <tr><td><kbd>Enter</kbd>mulai misi</td><td><kbd>Tab</kbd>peta &amp; HP</td></tr>
+      <tr><td><kbd>1-4</kbd>ganti senjata</td><td><kbd>Q</kbd>ganti senjata berikut</td></tr>
+      <tr><td><kbd>R</kbd>isi ulang amunisi</td><td><kbd>T</kbd>mulai event harian</td></tr>
       <tr><td><kbd>P</kbd>jeda</td><td><kbd>M</kbd>bisu</td></tr>
-      <tr><td><kbd>1-4</kbd>ganti tab HP</td><td><kbd>Esc</kbd>tutup peta</td></tr>
+      <tr><td><kbd>1-4</kbd>di peta: ganti tab HP</td><td><kbd>Esc</kbd>tutup peta</td></tr>
     </table>
   </div>
   <div class="start">Tekan Enter atau klik untuk mulai</div>

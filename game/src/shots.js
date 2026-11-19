@@ -6,6 +6,8 @@ import { SPAWNS, STALLS } from './config.js';
 import { makeLamp, makeHydrant, makeStallMesh } from './render.js';
 import { balanceUnits } from './police.js';
 import { createGangWar, crossfireLines } from './gangs.js';
+import { giveWeapon, switchTo } from './weapons.js';
+import { DailyEvent } from './daily.js';
 
 export function stageShot(G, name) {
   const params = new URLSearchParams(window.location.search);
@@ -48,9 +50,15 @@ export function stageShot(G, name) {
     G.player.onFoot = true;
     G.player.car = null;
     G.player.hasPistol = true;
-    G.player.ammo = 24;
+    G.player.ammo = 12;
+    G.player.pistolReserve = 12;
     G.player.health = 100;
     G.player.money = 0;
+    // polish 7: Raka fights this war with the SMG (marina pickup), so
+    // the shot shows the weapon line "SMG - 30/30" on the HUD and teal
+    // SMG tracers flying from his muzzle toward the Bara line
+    giveWeapon(G.player.weapons, 'smg', 2);
+    switchTo(G.player.weapons, 'smg');
     // the war itself, staged directly (not via the trigger)
     G.gangs = createGangWar(G.rng);
     // pull the two lines closer so both read in frame, on the road's
@@ -91,6 +99,14 @@ export function stageShot(G, name) {
     for (const m of G.gangs.members.slice(0, 4)) {
       G.effects.burst(m.x, 1.3, m.z, 10, [1, 0.9, 0.5], 4, 1);
     }
+    // Raka's own SMG fire: teal tracers from his gun toward the Bara
+    // line, plus a muzzle flash frozen at his position, so the shot
+    // shows him shooting back, not just standing in the crossfire
+    const baraLine = G.gangs.members.filter((m) => m.gang === 'bara').slice(0, 3);
+    for (const m of baraLine) {
+      G.tracers.fire({ x: 150, y: 1.3, z: 126 }, { x: m.x, y: 1.2, z: m.z }, 0x7fe3f0, 5);
+    }
+    G.effects.burst(150, 1.3, 125, 12, [0.5, 0.9, 1], 3, 1);
     // cover cars on the road between the gangs, parked
     const traffic = G.vehicles.list.filter((c) => c.driver === 'traffic');
     const spots = [
@@ -238,23 +254,33 @@ export function stageShot(G, name) {
     // city map on the left with the mission route, the HP menu on the
     // right with the current job card. Night (21:17) at the Pasar Malam
     // market: the player is at the first stall, mission m0 active
-    // (job card "Paket Pertama", $150 reward, countdown running), $150
-    // in pocket, pistol with 24 rounds, 2 stars on the HUD. The boot
-    // code opens the map screen from G.shotScreen; the 3D scene behind
-    // the overlay is the market street, so the map marker sits where
-    // the player actually stands.
+    // (job card "Paket Pertama", $150 reward, countdown running), $850
+    // in pocket, SMG in the loadout, 2 stars on the HUD. Polish 7
+    // staging: today's daily event is also running (orange marker on
+    // the map, daily row in the MISI pane), and the map carries the new
+    // markers (gun shop $, weapon pickups, daily !). The side arc is
+    // listed in the MISI pane but not started here: the live rig checks
+    // the job card reads "Paket Pertama". The boot code opens the map
+    // screen from G.shotScreen; the 3D scene behind the overlay is the
+    // market street, so the map marker sits where the player actually
+    // stands.
     G.clock = 797;
     G.player.x = STALLS[0].x; G.player.z = STALLS[0].z + 4;
     G.player.heading = -Math.PI / 3;
     G.player.onFoot = true;
     G.player.car = null;
-    G.player.money = 150;
+    G.player.money = 850;
     G.player.hasPistol = true;
-    G.player.ammo = 24;
+    G.player.ammo = 12;
+    G.player.pistolReserve = 12;
     G.player.health = 85;
+    giveWeapon(G.player.weapons, 'smg', 1);
     G.wanted.addHeat(30); // 2 stars on the HUD
     const def = G.missions.defs.find((m) => m.id === 'm0');
     G.missions.start(def);
+    // today's daily event running with 2 minutes left
+    G.daily.event = new DailyEvent(G.daily.def).start();
+    G.daily.event.timeLeft = 120;
     G.shotScreen = 'map';
     G.shotCamera = null;
     return;

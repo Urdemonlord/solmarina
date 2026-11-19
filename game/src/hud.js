@@ -1,10 +1,19 @@
 // Solmarina 3D: DOM HUD + 2D minimap + menu screens (browser only).
 // The DOM lives in index.html; this wires it and draws the minimap and
 // the full map screen (Tab) with its phone/job panel.
-import { WORLD, CONTACTS, DISTRICTS, STALLS, PHONE_TABS } from './config.js';
+import { WORLD, CONTACTS, DISTRICTS, STALLS, PHONE_TABS, SIDE_MISSIONS } from './config.js';
 import { MISSIONS } from './config.js';
+import { WEAPONS, WEAPON_ORDER } from './weapons.js';
 import { missionStatus } from './missions.js';
 import { roadLines, districtAt, routePoints, PARK_BLOCK } from './city.js';
+
+// First unfinished side mission, or null when the side arc is done.
+export function nextSideId(done) {
+  for (const m of SIDE_MISSIONS) {
+    if (!done.includes(m.id)) return m.id;
+  }
+  return null;
+}
 
 export function createHud(buildings) {
   const $ = (id) => document.getElementById(id);
@@ -15,6 +24,7 @@ export function createHud(buildings) {
     minimap: $('hud-minimap'), crosshair: $('hud-crosshair'),
     weapon: $('hud-weapon'), sight: $('hud-sight'),
     heli: $('hud-heli'), war: $('hud-war'),
+    daily: $('hud-daily'),
     minimapLabel: $('hud-minimap-label'),
     mapScreen: $('screen-map'), mapCanvas: $('map-canvas'),
     phoneJob: $('phone-job'), phoneStats: $('phone-stats'),
@@ -37,6 +47,8 @@ export function createHud(buildings) {
   const MAPH = el.mapCanvas ? el.mapCanvas.height : 0;
   const lines = roadLines();
   let flashUntil = 0;
+  let hitUntil = 0;
+  let lastDaily = null;
 
   function mapX(x) { return ((x + 320) / 660) * MW; }
   function mapZ(z) { return ((z + 320) / 720) * MH; }
@@ -87,7 +99,7 @@ export function createHud(buildings) {
   function drawMinimap(G) {
     paintBaseMap(ctx, MW, MH, mapX, mapZ);
     // mission route along the road grid (the reference minimap draws it)
-    const step = G.missions.currentStep();
+    const step = G.missions.currentStep() || (G.side ? G.side.currentStep() : null);
     if (step && step.target) {
       const pts = routePoints({ x: G.player.x, z: G.player.z }, step.target);
       ctx.strokeStyle = '#e04848';
@@ -129,6 +141,45 @@ export function createHud(buildings) {
         ctx.beginPath(); ctx.arc(mapX(m.x), mapZ(m.z), 2.5, 0, Math.PI * 2); ctx.fill();
       }
     }
+    // weapon pickups (green squares) + gun shop (blue $) + collect
+    // crates (white dots): the economy reads on the map, not just in text
+    if (G.weaponPickups) {
+      ctx.fillStyle = '#58d96b';
+      for (const pk of G.weaponPickups) {
+        if (pk.taken) continue;
+        ctx.fillRect(mapX(pk.x) - 2, mapZ(pk.z) - 2, 4, 4);
+      }
+    }
+    if (G.gunshop) {
+      ctx.fillStyle = '#4a90e0';
+      ctx.beginPath(); ctx.arc(mapX(G.gunshop.x), mapZ(G.gunshop.z), 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    if (G.collectCrates) {
+      ctx.fillStyle = '#ffffff';
+      for (const c of G.collectCrates) {
+        if (c.taken) continue;
+        ctx.fillRect(mapX(c.x) - 1.5, mapZ(c.z) - 1.5, 3, 3);
+      }
+    }
+    // daily event target (orange star) + bounty target (red dot) +
+    // escort (pink dot): the day's work is visible before the player
+    // reads any panel
+    if (G.daily && G.daily.event && G.daily.event.active) {
+      const t = G.daily.event.currentTarget();
+      if (t) {
+        const pulse = 4 + Math.sin(performance.now() / 200) * 1.5;
+        ctx.fillStyle = '#ff8c2e';
+        ctx.beginPath(); ctx.arc(mapX(t.x), mapZ(t.z), pulse, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    if (G.bountyTarget && G.bountyTarget.down <= 0) {
+      ctx.fillStyle = '#e04848';
+      ctx.beginPath(); ctx.arc(mapX(G.bountyTarget.x), mapZ(G.bountyTarget.z), 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    if (G.escort && G.escort.alive) {
+      ctx.fillStyle = '#e07ab8';
+      ctx.beginPath(); ctx.arc(mapX(G.escort.x), mapZ(G.escort.z), 3, 0, Math.PI * 2); ctx.fill();
+    }
     // player arrow
     ctx.save();
     ctx.translate(mapX(G.player.x), mapZ(G.player.z));
@@ -165,10 +216,15 @@ export function createHud(buildings) {
     // through a marker. The 4-mission shot put both the player arrow
     // and the mission marker on PASAR MALAM, so any label whose text
     // box a marker would land on moves up clear of it.
-    const step = G.missions.currentStep();
+    const step = G.missions.currentStep() || (G.side ? G.side.currentStep() : null);
     const target = step && step.target ? step.target : null;
     const px = mx(G.player.x), py = mz(G.player.z);
     const tx = target ? mx(target.x) : -9999, ty = target ? mz(target.z) : -9999;
+    // the new polish-7 markers sit on district centres too (the gun
+    // shop is in the middle of Kota Tua): labels move up clear of them
+    const gx = G.gunshop ? mx(G.gunshop.x) : -9999, gy = G.gunshop ? mz(G.gunshop.z) : -9999;
+    const dTarget = G.daily && G.daily.event && G.daily.event.active ? G.daily.event.currentTarget() : null;
+    const dx = dTarget ? mx(dTarget.x) : -9999, dy = dTarget ? mz(dTarget.z) : -9999;
     DISTRICTS.forEach((d, i) => {
       mapCtx.fillStyle = tints[i % tints.length];
       mapCtx.fillRect(mx(d.x - d.w / 2), mz(d.z - d.h / 2), (d.w / 660) * MAPW, (d.h / 720) * MAPH);
@@ -177,7 +233,7 @@ export function createHud(buildings) {
       let ly = mz(d.z) + 5;
       const lx = mx(d.x);
       const onMarker = (x, y) => Math.abs(x - lx) < 70 && Math.abs(y - ly) < 26;
-      if (onMarker(px, py) || onMarker(tx, ty)) ly -= 32;
+      if (onMarker(px, py) || onMarker(tx, ty) || onMarker(gx, gy) || onMarker(dx, dy)) ly -= 32;
       mapCtx.strokeText(d.name.toUpperCase(), lx, ly);
       mapCtx.fillStyle = '#22242a';
       mapCtx.fillText(d.name.toUpperCase(), lx, ly);
@@ -204,6 +260,47 @@ export function createHud(buildings) {
     // market stalls
     mapCtx.fillStyle = '#e04848';
     for (const s of STALLS) mapCtx.fillRect(mx(s.x) - 4, mz(s.z) - 4, 8, 8);
+    // gun shop (blue $) + weapon pickups (green squares) + collect
+    // crates (white dots) + daily target (orange star) + bounty (red)
+    if (G.gunshop) {
+      mapCtx.fillStyle = '#4a90e0';
+      mapCtx.beginPath(); mapCtx.arc(mx(G.gunshop.x), mz(G.gunshop.z), 7, 0, Math.PI * 2); mapCtx.fill();
+      mapCtx.fillStyle = '#fff';
+      mapCtx.font = 'bold 11px Arial, sans-serif';
+      mapCtx.fillText('$', mx(G.gunshop.x), mz(G.gunshop.z) + 4);
+    }
+    if (G.weaponPickups) {
+      mapCtx.fillStyle = '#58d96b';
+      for (const pk of G.weaponPickups) {
+        if (pk.taken) continue;
+        mapCtx.fillRect(mx(pk.x) - 4, mz(pk.z) - 4, 8, 8);
+      }
+    }
+    if (G.collectCrates) {
+      mapCtx.fillStyle = '#ffffff';
+      for (const c of G.collectCrates) {
+        if (c.taken) continue;
+        mapCtx.fillRect(mx(c.x) - 3, mz(c.z) - 3, 6, 6);
+      }
+    }
+    if (G.daily && G.daily.event && G.daily.event.active) {
+      const t = G.daily.event.currentTarget();
+      if (t) {
+        mapCtx.fillStyle = '#ff8c2e';
+        mapCtx.beginPath(); mapCtx.arc(mx(t.x), mz(t.z), 9, 0, Math.PI * 2); mapCtx.fill();
+        mapCtx.fillStyle = '#22242a';
+        mapCtx.font = 'bold 12px Arial, sans-serif';
+        mapCtx.fillText('!', mx(t.x), mz(t.z) + 4);
+      }
+    }
+    if (G.bountyTarget && G.bountyTarget.down <= 0) {
+      mapCtx.fillStyle = '#e04848';
+      mapCtx.beginPath(); mapCtx.arc(mx(G.bountyTarget.x), mz(G.bountyTarget.z), 7, 0, Math.PI * 2); mapCtx.fill();
+    }
+    if (G.escort && G.escort.alive) {
+      mapCtx.fillStyle = '#e07ab8';
+      mapCtx.beginPath(); mapCtx.arc(mx(G.escort.x), mz(G.escort.z), 6, 0, Math.PI * 2); mapCtx.fill();
+    }
     // police + heli
     for (const u of G.police.units) {
       const p = u.kind === 'car' ? u.car : u.ped;
@@ -251,8 +348,11 @@ export function createHud(buildings) {
     const active = G.missions.active;
     const activeId = active ? active.def.id : null;
     const step = G.missions.currentStep();
-    // PETA pane: current job card
+    // PETA pane: current job card. Main mission first, then the side
+    // arc (m5-m8), then the daily event, so the card always shows the
+    // job the player is actually on.
     let jobHtml;
+    const sideActive = G.side ? G.side.active : null;
     if (active) {
       const t = Math.max(0, Math.ceil(active.timeLeft));
       jobHtml = '<div class="phone-job-card"><span class="avatar" style="background:'
@@ -261,9 +361,24 @@ export function createHud(buildings) {
         + '<div class="phone-job-desc">' + (step ? step.label : '') + '</div>'
         + '<div class="phone-job-time">Sisa waktu ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') + '</div>'
         + '</span></div>';
+    } else if (sideActive) {
+      const sstep = G.side.currentStep();
+      const t = Math.max(0, Math.ceil(sideActive.timeLeft));
+      jobHtml = '<div class="phone-job-card"><span class="avatar" style="background:'
+        + CONTACTS[2].color + '">D</span><span><span class="phone-job-eyebrow">MISI SAMPINGAN &middot; DIMAS</span>'
+        + '<div class="phone-job-title">' + sideActive.def.title + ' &mdash; $' + sideActive.def.reward + '</div>'
+        + '<div class="phone-job-desc">' + (sstep ? sstep.label : '') + '</div>'
+        + '<div class="phone-job-time">Sisa waktu ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') + '</div>'
+        + '</span></div>';
     } else if (done.length < MISSIONS.length) {
       jobHtml = '<div class="phone-job-title">Belum ada misi aktif</div>'
         + '<div class="phone-job-desc">Tekan Enter untuk mulai misi berikutnya.</div>';
+    } else if ((G.sideDone || []).length < SIDE_MISSIONS.length) {
+      jobHtml = '<div class="phone-job-title">Misi sampingan tersedia</div>'
+        + '<div class="phone-job-desc">Tekan Enter untuk mulai misi sampingan berikutnya.</div>';
+    } else if (G.daily && !G.daily.doneToday) {
+      jobHtml = '<div class="phone-job-title">Event harian: ' + G.daily.def.name + '</div>'
+        + '<div class="phone-job-desc">' + G.daily.def.blurb + ' Tekan T di marker oranye.</div>';
     } else {
       jobHtml = '<div class="phone-job-title">Semua misi selesai!</div>'
         + '<div class="phone-job-desc">Kota ini milikmu, Raka. Jelajahi sesukamu.</div>';
@@ -279,7 +394,9 @@ export function createHud(buildings) {
       }).join('');
     }
     // MISI pane: the whole arc with reward + first step, then the
-    // gang war event (free-roam, not a mission): its live status.
+    // side arc (m5-m8, unlocked after the main arc), the daily event
+    // (free-roam, one per day), and the gang war event (free-roam,
+    // not a mission): its live status.
     if (el.phoneMissions) {
       el.phoneMissions.innerHTML = MISSIONS.map((m, i) => {
         const st = missionStatus(done, activeId, m.id);
@@ -287,6 +404,20 @@ export function createHud(buildings) {
           + '<br><span class="mdesc">' + m.steps[0].label + '</span></span>'
           + '<span>$' + m.reward + '<br><span class="st-' + st + '">' + statusLabel[st] + '</span></span></div>';
       }).join('')
+        + SIDE_MISSIONS.map((m, i) => {
+          const sdone = G.sideDone || [];
+          const sactive = G.side && G.side.active ? G.side.active.def.id : null;
+          const st = sdone.includes(m.id) ? 'done'
+            : m.id === sactive ? 'active'
+            : (done.length >= MISSIONS.length && m.id === nextSideId(sdone)) ? 'next' : 'locked';
+          return '<div class="mrow"><span><b>' + (i + 6) + '.</b> ' + m.title
+            + '<br><span class="mdesc">' + m.steps[0].label + '</span></span>'
+            + '<span>$' + m.reward + '<br><span class="st-' + st + '">' + statusLabel[st] + '</span></span></div>';
+        }).join('')
+        + (G.daily ? '<div class="mrow"><span><b>Event Harian.</b> ' + G.daily.def.name
+          + '<br><span class="mdesc">' + G.daily.def.blurb + '</span></span>'
+          + '<span>$' + G.daily.def.reward + '<br><span class="st-' + (G.daily.doneToday ? 'done' : G.daily.event && G.daily.event.active ? 'active' : 'next') + '">'
+          + (G.daily.doneToday ? '✓ SELESAI' : G.daily.event && G.daily.event.active ? '▶ BERLANGSUNG' : 'HARI INI') + '</span></span></div>' : '')
         + '<div class="mrow"><span><b>Peristiwa.</b> Perang Gang &mdash; Pasar Malam'
         + '<br><span class="mdesc">Geng Ombak vs Geng Bara, di jalan z=120</span></span>'
         + '<span>' + (G.gangs && G.gangs.active ? '<span class="st-active">▶ BERLANGSUNG</span>'
@@ -303,11 +434,21 @@ export function createHud(buildings) {
     }
     // STATS pane
     const stars = '★'.repeat(G.wanted.stars) + '☆'.repeat(5 - G.wanted.stars);
+    const weaponList = G.player.weapons
+      ? WEAPON_ORDER.filter((id) => id === 'pistol' ? G.player.hasPistol : G.player.weapons.owned[id])
+        .map((id) => {
+          const def = WEAPONS[id];
+          const mag = id === 'pistol' ? G.player.ammo : G.player.weapons.owned[id].mag;
+          const res = id === 'pistol' ? (G.player.pistolReserve || 0) : G.player.weapons.owned[id].reserve;
+          return def.name + ' ' + mag + '/' + res + (G.player.weapons.current === id ? ' ◀' : '');
+        }).join(', ')
+      : (G.player.hasPistol ? 'Pistol (' + G.player.ammo + ' peluru)' : 'Tangan kosong');
     el.phoneStats.innerHTML = '<div>Uang: <b>$' + G.player.money + '</b></div>'
-      + '<div>Misi selesai: <b>' + done.length + ' / ' + MISSIONS.length + '</b></div>'
+      + '<div>Misi selesai: <b>' + done.length + ' / ' + MISSIONS.length + ' + ' + (G.sideDone || []).length + ' / ' + SIDE_MISSIONS.length + '</b></div>'
       + '<div>Wanted: <b>' + stars + '</b></div>'
       + '<div>Nyawa: <b>' + Math.max(0, Math.round(G.player.health)) + '</b></div>'
-      + '<div>Senjata: <b>' + (G.player.hasPistol ? 'Pistol (' + G.player.ammo + ' peluru)' : 'Tangan kosong') + '</b></div>'
+      + '<div>Senjata: <b>' + weaponList + '</b></div>'
+      + (G.daily ? '<div>Event harian: <b>' + G.daily.def.name + ' &mdash; ' + (G.daily.doneToday ? '✓ selesai' : G.daily.event && G.daily.event.active ? '▶ berlangsung' : 'belum dimulai') + '</b></div>' : '')
       + '<div>Waktu: <b>' + fmtClock(Math.max(0, G.clock)) + '</b></div>';
   }
 
@@ -319,6 +460,7 @@ export function createHud(buildings) {
   return {
     showPhoneTab,
     flash() { flashUntil = performance.now() + 180; },
+    hitMarker() { hitUntil = performance.now() + 120; },
     setObjective(text) {
       el.objective.textContent = text;
       el.objective.style.display = text ? 'block' : 'none';
@@ -377,11 +519,48 @@ export function createHud(buildings) {
         el.speed.style.display = 'none';
       }
       el.crosshair.style.display = (G.player.hasPistol && G.player.onFoot) ? 'block' : 'none';
-      // weapon line: name + ammo, always visible so the player knows the loadout
+      // hit marker: the crosshair flashes red for 120ms on a confirmed hit
+      if (el.crosshair) {
+        const hit = performance.now() < hitUntil;
+        el.crosshair.style.background = hit ? '#e04848' : '#fff';
+        el.crosshair.style.width = hit ? '14px' : '8px';
+        el.crosshair.style.height = hit ? '14px' : '8px';
+        el.crosshair.style.margin = hit ? '-7px 0 0 -7px' : '-4px 0 0 -4px';
+      }
+      // weapon line: current weapon + mag/reserve, always visible so
+      // the player knows the loadout; reload state reads as text
       if (el.weapon) {
-        el.weapon.textContent = G.player.hasPistol
-          ? 'Pistol - ' + G.player.ammo + ' peluru'
-          : 'Senjata: tangan kosong';
+        if (!G.player.hasPistol && (!G.player.weapons || !Object.keys(G.player.weapons.owned).length)) {
+          el.weapon.textContent = 'Senjata: tangan kosong';
+        } else {
+          const w = G.player.weapons || { current: 'pistol', owned: {}, reloading: 0 };
+          const def = WEAPONS[w.current] || WEAPONS.pistol;
+          const mag = w.current === 'pistol' ? G.player.ammo : (w.owned[w.current] ? w.owned[w.current].mag : 0);
+          const res = w.current === 'pistol' ? (G.player.pistolReserve || 0) : (w.owned[w.current] ? w.owned[w.current].reserve : 0);
+          el.weapon.textContent = w.reloading > 0
+            ? def.name + ' - ISI ULANG...'
+            : def.name + ' - ' + mag + '/' + res + ' peluru';
+        }
+      }
+      // daily event panel: today's event, its status and the running
+      // timer while active. Updated only when the text changes, so the
+      // DOM is not rewritten every frame.
+      if (el.daily && G.daily) {
+        const d = G.daily;
+        let text;
+        if (d.doneToday) {
+          text = 'HARI INI: ' + d.def.name + ' - SELESAI ✓ (+$' + d.def.reward + ')';
+        } else if (d.event && d.event.active) {
+          const t = Math.max(0, Math.ceil(d.event.timeLeft));
+          text = 'HARI INI: ' + d.def.name + ' - ' + d.event.stepLabel() + ' - ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+        } else {
+          text = 'HARI INI: ' + d.def.name + ' (+$' + d.def.reward + ') - tekan T di marker oranye';
+        }
+        if (text !== lastDaily) {
+          lastDaily = text;
+          el.daily.textContent = text;
+          el.daily.style.display = 'block';
+        }
       }
       // line-of-sight indicator: only while wanted
       if (el.sight) {

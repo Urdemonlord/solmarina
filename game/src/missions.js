@@ -1,7 +1,8 @@
 // Solmarina 3D: mission state machine (pure logic; the 3D beacons and HUD
 // arrow read this state, they do not own it).
 // A mission is a list of steps; each step completes from a plain context:
-//   { playerX, playerZ, playerInCar, ramHits, stealDone, stars, timeLeft }
+//   { playerX, playerZ, playerInCar, ramHits, stealDone, stars, timeLeft,
+//     collected, kills, escortAlive }
 // update() returns an event string ('step', 'done', 'fail') or null.
 import { MISSIONS } from './config.js';
 
@@ -84,6 +85,19 @@ export class MissionRunner {
       }
     } else if (step.kind === 'steal') {
       if (a.stealDone) return this.advance();
+    } else if (step.kind === 'collect') {
+      if ((ctx.collected || 0) >= (step.count || 1)) return this.advance();
+    } else if (step.kind === 'takedown') {
+      if ((ctx.kills || 0) >= (step.count || 1)) return this.advance();
+    } else if (step.kind === 'escort') {
+      if (ctx.escortAlive === false) {
+        this.active = null;
+        this.lastFinished = null;
+        return 'fail';
+      }
+      const dx = ctx.playerX - step.target.x;
+      const dz = ctx.playerZ - step.target.z;
+      if (dx * dx + dz * dz < 8 * 8) return this.advance();
     }
     return null;
   }
